@@ -89,8 +89,8 @@ export function BrowserPane({
   }
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col border border-[var(--line)] bg-[var(--panel)]">
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col border-[var(--line)] bg-[var(--panel)] max-lg:border-0 lg:border">
+      <header className="hidden items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3 lg:flex">
         <div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--gold)]">{title}</p>
           <p className="mt-1 text-sm text-[var(--muted)]">{caption}</p>
@@ -102,7 +102,13 @@ export function BrowserPane({
         ) : null}
       </header>
 
-      <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2">
+      {sharingLabel ? (
+        <p className="border-b border-[var(--line)] bg-[var(--danger-soft)] px-3 py-1.5 text-xs text-[var(--danger)] lg:hidden">
+          {sharingLabel}
+        </p>
+      ) : null}
+
+      <div className="flex items-center gap-1.5 border-b border-[var(--line)] px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
         <button type="button" className="nav-btn" onClick={onBack} disabled={!local || !canBack} aria-label="Back">
           ←
         </button>
@@ -119,14 +125,16 @@ export function BrowserPane({
           ↻
         </button>
         {local ? (
-          <form onSubmit={submit} className="flex min-w-0 flex-1 gap-2">
+          <form onSubmit={submit} className="flex min-w-0 flex-1 gap-1.5 sm:gap-2">
             <input
               value={urlValue}
               onChange={(e) => onUrlChange?.(e.target.value)}
-              placeholder="Enter a private URL"
+              placeholder="Private URL"
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
+              enterKeyHint="go"
+              inputMode="url"
               className="url-input"
               aria-label="Private URL"
             />
@@ -153,8 +161,8 @@ export function BrowserPane({
             allow="fullscreen"
           />
         ) : (
-          <div className="absolute inset-0 grid place-items-center px-8 text-center">
-            <p className="max-w-sm text-[var(--muted)]">
+          <div className="absolute inset-0 grid place-items-center px-6 text-center sm:px-8">
+            <p className="max-w-sm text-sm text-[var(--muted)] sm:text-base">
               {local
                 ? "Enter a URL to open a page. The other person will see the page, not the address."
                 : "Waiting for the other person to open a page."}

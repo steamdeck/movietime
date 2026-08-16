@@ -20,17 +20,22 @@
 html,
 body {
   min-height: 100%;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.font-serif {
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+button,
+a,
+input,
+[role="tab"] {
+  touch-action: manipulation;
 }
 
 .url-input {
-  @apply min-w-0 flex-1 rounded-none border border-[var(--line-strong)] bg-[#110f0d] px-3 py-2 text-sm outline-none;
+  @apply min-w-0 flex-1 rounded-none border border-[var(--line-strong)] bg-[#110f0d] px-3 py-2.5 text-base outline-none sm:py-2 sm:text-sm;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   color: var(--fg);
 }
@@ -40,7 +45,7 @@ body {
 }
 
 .open-btn {
-  @apply shrink-0 bg-[var(--gold)] px-4 py-2 text-sm text-[#1a140c] transition;
+  @apply min-h-11 shrink-0 bg-[var(--gold)] px-4 text-sm font-medium text-[#1a140c] transition sm:min-h-0 sm:py-2;
 }
 
 .open-btn:hover {
@@ -52,11 +57,28 @@ body {
 }
 
 .nav-btn {
-  @apply h-9 w-9 shrink-0 border border-[var(--line-strong)] text-sm text-[var(--fg)] disabled:opacity-30;
+  @apply h-11 w-11 shrink-0 border border-[var(--line-strong)] text-base text-[var(--fg)] disabled:opacity-30 sm:h-9 sm:w-9 sm:text-sm;
 }
 
 .bar-btn {
-  @apply border border-[var(--line-strong)] px-3 py-1.5 text-xs text-[var(--fg)] transition hover:border-[var(--gold)] hover:text-[var(--gold)];
+  @apply inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap border border-[var(--line-strong)] px-3 text-sm text-[var(--fg)] transition hover:border-[var(--gold)] hover:text-[var(--gold)] sm:min-h-0 sm:py-1.5 sm:text-xs;
+}
+
+.font-serif {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.bar-btn:disabled {
+  opacity: 0.45;
 }
 
 .bar-btn.on {

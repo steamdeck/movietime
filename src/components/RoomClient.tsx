@@ -28,6 +28,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [peerSharing, setPeerSharing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<"you" | "them">("you");
 
   const applyingLocal = useRef(false);
   const applyingRemote = useRef(false);
@@ -110,6 +111,10 @@ export function RoomClient({ roomId }: { roomId: string }) {
     if (session.status !== "ready") return "Joining…";
     return role === "a" ? "You created this room" : "You joined as the second person";
   }, [role, session.status]);
+
+  useEffect(() => {
+    if (peerSharing) setMobilePane("them");
+  }, [peerSharing]);
 
   async function openUrl(raw: string) {
     if (!token || busy) return;
@@ -237,7 +242,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[var(--bg)] text-[var(--fg)]">
+    <div className="flex h-dvh flex-col overflow-hidden overscroll-none bg-[var(--bg)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] text-[var(--fg)]">
       <ConnectionBar
         roomId={roomId}
         connectionState={peer.connectionState}
@@ -264,44 +269,92 @@ export function RoomClient({ roomId }: { roomId: string }) {
       />
 
       {notice ? (
-        <p className="border-b border-[var(--line)] bg-[var(--danger-soft)] px-4 py-2 text-sm text-[var(--danger)]">
+        <p className="border-b border-[var(--line)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)] sm:px-4">
           {notice}
         </p>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <BrowserPane
-          title="You"
-          caption="Your URL stays on this device."
-          local
-          urlValue={urlValue}
-          onUrlChange={setUrlValue}
-          onOpen={() => openUrl(urlValue)}
-          onBack={() => goHistory(-1)}
-          onForward={() => goHistory(1)}
-          onReload={reload}
-          canBack={localIndex > 0}
-          canForward={localIndex >= 0 && localIndex < localHistory.length - 1}
-          navigationId={localNavId}
-          reloadToken={localReload}
-          onFrameEvent={onLocalFrame}
-          postToFrameRef={postLocal}
-          sharingLabel={peer.sharing ? "Screen sharing active" : null}
-        />
-        <BrowserPane
-          title="Other person"
-          caption="Their address is never shown here."
-          local={false}
-          navigationId={remoteNavId}
-          reloadToken={remoteReload}
-          onFrameEvent={onRemoteFrame}
-          postToFrameRef={postRemote}
-          screenStream={peer.remoteStream}
-          sharingLabel={peerSharing ? "Screen sharing active" : null}
-        />
+      <div
+        className="grid grid-cols-2 border-b border-[var(--line)] bg-[var(--panel)] lg:hidden"
+        role="tablist"
+        aria-label="Whose page to show"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePane === "you"}
+          className={`min-h-11 px-3 text-sm ${
+            mobilePane === "you"
+              ? "border-b-2 border-[var(--gold)] text-[var(--gold)]"
+              : "text-[var(--muted)]"
+          }`}
+          onClick={() => setMobilePane("you")}
+        >
+          You
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePane === "them"}
+          className={`relative min-h-11 px-3 text-sm ${
+            mobilePane === "them"
+              ? "border-b-2 border-[var(--gold)] text-[var(--gold)]"
+              : "text-[var(--muted)]"
+          }`}
+          onClick={() => setMobilePane("them")}
+        >
+          Other person
+          {remoteNavId || peerSharing ? (
+            <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[var(--gold)]" />
+          ) : null}
+        </button>
       </div>
 
-      <footer className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
+      <div className="relative min-h-0 flex-1 lg:flex">
+        <div
+          className={`flex min-h-0 min-w-0 flex-1 flex-col max-lg:absolute max-lg:inset-0 ${
+            mobilePane === "you" ? "z-10" : "z-0 max-lg:invisible max-lg:pointer-events-none"
+          }`}
+        >
+          <BrowserPane
+            title="You"
+            caption="Your URL stays on this device."
+            local
+            urlValue={urlValue}
+            onUrlChange={setUrlValue}
+            onOpen={() => openUrl(urlValue)}
+            onBack={() => goHistory(-1)}
+            onForward={() => goHistory(1)}
+            onReload={reload}
+            canBack={localIndex > 0}
+            canForward={localIndex >= 0 && localIndex < localHistory.length - 1}
+            navigationId={localNavId}
+            reloadToken={localReload}
+            onFrameEvent={onLocalFrame}
+            postToFrameRef={postLocal}
+            sharingLabel={peer.sharing ? "Screen sharing active" : null}
+          />
+        </div>
+        <div
+          className={`flex min-h-0 min-w-0 flex-1 flex-col max-lg:absolute max-lg:inset-0 ${
+            mobilePane === "them" ? "z-10" : "z-0 max-lg:invisible max-lg:pointer-events-none"
+          }`}
+        >
+          <BrowserPane
+            title="Other person"
+            caption="Their address is never shown here."
+            local={false}
+            navigationId={remoteNavId}
+            reloadToken={remoteReload}
+            onFrameEvent={onRemoteFrame}
+            postToFrameRef={postRemote}
+            screenStream={peer.remoteStream}
+            sharingLabel={peerSharing ? "Screen sharing active" : null}
+          />
+        </div>
+      </div>
+
+      <footer className="hidden border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)] lg:block">
         Pages are fetched by this app’s server so the other person never receives the raw URL.
         Sites that block fetching still require explicit screen sharing. Browser security rules
         are not bypassed.
@@ -312,11 +365,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
 
 function Centered({ message, href }: { message: string; href?: string }) {
   return (
-    <div className="grid h-dvh place-items-center bg-[var(--bg)] px-6 text-center text-[var(--fg)]">
+    <div className="grid h-dvh place-items-center bg-[var(--bg)] px-6 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-center text-[var(--fg)]">
       <div>
-        <p className="text-lg">{message}</p>
+        <p className="text-lg leading-snug">{message}</p>
         {href ? (
-          <Link href={href} className="mt-4 inline-block text-sm text-[var(--gold)] underline">
+          <Link href={href} className="mt-5 inline-flex min-h-11 items-center text-sm text-[var(--gold)] underline">
             Back to start
           </Link>
         ) : null}
