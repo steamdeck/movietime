@@ -2,7 +2,12 @@ import { RoomClient } from "@/components/RoomClient";
 import { isRoomId } from "@/lib/ids";
 import { notFound } from "next/navigation";
 
-export default function RoomPage({ params }: { params: { roomId: string } }) {
-  if (!isRoomId(params.roomId)) notFound();
-  return <RoomClient roomId={params.roomId} />;
+export default async function RoomPage({
+  params,
+}: {
+  params: Promise<{ roomId: string }>;
+}) {
+  const { roomId } = await params;
+  if (!isRoomId(roomId)) notFound();
+  return <RoomClient roomId={roomId} />;
 }

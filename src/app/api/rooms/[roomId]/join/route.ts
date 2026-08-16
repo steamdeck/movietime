@@ -7,9 +7,10 @@ export const runtime = "nodejs";
 
 export async function POST(
   req: Request,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  if (!isRoomId(params.roomId)) {
+  const { roomId } = await params;
+  if (!isRoomId(roomId)) {
     return jsonNoStore({ error: "Invalid room" }, { status: 400 });
   }
 
@@ -21,7 +22,7 @@ export async function POST(
     token = undefined;
   }
 
-  const result = await getStore().joinRoom(params.roomId, token);
+  const result = await getStore().joinRoom(roomId, token);
   if ("error" in result) {
     const status = result.error === "missing" ? 404 : 409;
     return jsonNoStore(
@@ -30,7 +31,7 @@ export async function POST(
     );
   }
 
-  await getStore().publish(params.roomId, result.role, {
+  await getStore().publish(roomId, result.role, {
     type: "peer-joined",
     role: result.role,
   });

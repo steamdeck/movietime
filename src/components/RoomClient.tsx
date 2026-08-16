@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { BrowserPane, type FrameEvent } from "@/components/BrowserPane";
 import { ConnectionBar } from "@/components/ConnectionBar";
 import { usePeerSession } from "@/hooks/usePeerSession";
@@ -315,9 +316,9 @@ function Centered({ message, href }: { message: string; href?: string }) {
       <div>
         <p className="text-lg">{message}</p>
         {href ? (
-          <a href={href} className="mt-4 inline-block text-sm text-[var(--gold)] underline">
+          <Link href={href} className="mt-4 inline-block text-sm text-[var(--gold)] underline">
             Back to start
-          </a>
+          </Link>
         ) : null}
       </div>
     </div>

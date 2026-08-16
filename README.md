@@ -17,7 +17,7 @@ Sites that refuse to be fetched, or that break when proxied, are **not** force-e
 
 ## Local development
 
-Requirements: Node.js 18.18+ and npm.
+Requirements: Node.js 18.18+ and npm. Cloudflare production builds should use Node 22.
 
 ```bash
 cp .env.example .env.local
@@ -28,6 +28,8 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000). Create a room, copy the invite, and join from another browser or window.
 
 In-memory signaling is enough for a single `next dev` / `next start` process. Two tabs on the same machine should connect.
+
+`npm run build` produces a Cloudflare Workers bundle via OpenNext. Use `npm run dev` for day-to-day work.
 
 ## Environment
 
@@ -45,6 +47,24 @@ See `.env.example`.
 
 TURN credentials are `NEXT_PUBLIC_*` because the browser WebRTC stack needs them. Prefer time-limited TURN REST credentials in production if your provider supports them.
 
+## Cloudflare deployment
+
+This app deploys to Cloudflare Workers with `@opennextjs/cloudflare`.
+
+Workers Builds settings that already work:
+
+- **Build command:** `npm run build` (OpenNext + Next.js)
+- **Deploy command:** `npx wrangler deploy`
+- **Node.js version:** 22
+
+In the dashboard, set `NAV_ENCRYPTION_KEY`. For two people on separate Worker isolates, also set Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) and TURN (`NEXT_PUBLIC_TURN_*`).
+
+Local preview in the Workers runtime (needs Node 22):
+
+```bash
+npm run preview
+```
+
 ## Vercel deployment
 
 Vercel serverless instances do **not** share memory. Persistent WebSockets are also a poor fit. Signaling is isolated behind `/api/rooms/[roomId]/signal` (HTTP long-poll). For production:
@@ -61,7 +81,7 @@ npx vercel
 
 Or connect the GitHub repo in the Vercel dashboard and import as a Next.js project. No extra `vercel.json` is required.
 
-Screen and camera media never transit Vercel. Only opaque sync messages and signaling JSON do. Media uses the WebRTC peer connection (STUN/TURN).
+Screen and camera media never transit Vercel or Cloudflare. Only opaque sync messages and signaling JSON do. Media uses the WebRTC peer connection (STUN/TURN).
 
 ## TURN configuration
 

@@ -32,16 +32,17 @@ function errorPage(message: string) {
 
 export async function GET(
   _req: Request,
-  { params }: { params: { navigationId: string } }
+  { params }: { params: Promise<{ navigationId: string }> }
 ) {
-  if (!isOpaqueId(params.navigationId)) {
+  const { navigationId } = await params;
+  if (!isOpaqueId(navigationId)) {
     return new Response(errorPage("This view does not exist."), {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
 
-  const navigation = await getStore().getNavigation(params.navigationId);
+  const navigation = await getStore().getNavigation(navigationId);
   if (!navigation) {
     return new Response(errorPage("This view has expired."), {
       status: 404,

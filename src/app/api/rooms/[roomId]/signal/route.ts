@@ -23,9 +23,10 @@ function isSignalPayload(value: unknown): value is SignalPayload {
 
 export async function GET(
   req: Request,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  if (!isRoomId(params.roomId)) {
+  const { roomId } = await params;
+  if (!isRoomId(roomId)) {
     return jsonNoStore({ error: "Invalid room" }, { status: 400 });
   }
   const url = new URL(req.url);
@@ -36,20 +37,21 @@ export async function GET(
   }
 
   const store = getStore();
-  const room = await store.getRoom(params.roomId);
+  const room = await store.getRoom(roomId);
   if (!room) return jsonNoStore({ error: "Room not found" }, { status: 404 });
-  await store.touch(params.roomId, role);
+  await store.touch(roomId, role);
 
-  const messages = await store.waitSignals(params.roomId, Number.isFinite(after) ? after : 0, 8000);
+  const messages = await store.waitSignals(roomId, Number.isFinite(after) ? after : 0, 8000);
   const seq = messages.length ? messages[messages.length - 1].seq : after;
   return jsonNoStore({ messages, seq });
 }
 
 export async function POST(
   req: Request,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  if (!isRoomId(params.roomId)) {
+  const { roomId } = await params;
+  if (!isRoomId(roomId)) {
     return jsonNoStore({ error: "Invalid room" }, { status: 400 });
   }
 
@@ -59,8 +61,8 @@ export async function POST(
   }
 
   const store = getStore();
-  const envelope = await store.publish(params.roomId, body.role, body.payload);
+  const envelope = await store.publish(roomId, body.role, body.payload);
   if (!envelope) return jsonNoStore({ error: "Room not found" }, { status: 404 });
-  await store.touch(params.roomId, body.role);
+  await store.touch(roomId, body.role);
   return jsonNoStore({ ok: true, seq: envelope.seq });
 }

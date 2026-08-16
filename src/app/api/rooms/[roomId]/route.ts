@@ -7,12 +7,13 @@ export const runtime = "nodejs";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  if (!isRoomId(params.roomId)) {
+  const { roomId } = await params;
+  if (!isRoomId(roomId)) {
     return jsonNoStore({ error: "Invalid room" }, { status: 400 });
   }
-  const room = await getStore().getRoom(params.roomId);
+  const room = await getStore().getRoom(roomId);
   if (!room) return jsonNoStore({ error: "Room not found" }, { status: 404 });
   return jsonNoStore({
     roomId: room.id,
