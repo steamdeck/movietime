@@ -1,5 +1,7 @@
 import { EventEmitter } from "events";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { randomId, randomRoomId, randomToken } from "./ids";
+import type { DurableBindings } from "./durable-rpc";
 import type { Role, SignalEnvelope, SignalPayload } from "./protocol";
 
 export const ROOM_TTL_MS = 60 * 60 * 1000;
@@ -391,11 +393,106 @@ class RedisStore implements AppStore {
   }
 }
 
-export function getStore(): AppStore {
-  const g = globalThis as typeof globalThis & { __mtAppStore?: AppStore };
-  if (!g.__mtAppStore) {
-    const redis = redisClient();
-    g.__mtAppStore = redis ? new RedisStore(redis) : new MemoryStore();
+class DurableStore implements AppStore {
+  constructor(private env: DurableBindings) {}
+
+  private room(roomId: string) {
+    return this.env.ROOMS.getByName(roomId.toLowerCase());
   }
-  return g.__mtAppStore;
+
+  private nav(navigationId: string) {
+    return this.env.NAVS.getByName(navigationId);
+  }
+
+  async createRoom() {
+    const token = randomToken();
+    let id = randomRoomId();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const created = await this.room(id).init(id, token);
+      if (created) {
+        const room = await this.room(id).snapshot();
+        if (!room) throw new Error("Room create failed");
+        return { room, token, role: "a" as const };
+      }
+      id = randomRoomId();
+    }
+    throw new Error("Could not allocate a room id");
+  }
+
+  async getRoom(roomId: string) {
+    return this.room(roomId).snapshot();
+  }
+
+  async joinRoom(roomId: string, token?: string) {
+    const result = await this.room(roomId).join(token);
+    if ("error" in result) return result;
+    return { room: result.room, token: result.token, role: result.role };
+  }
+
+  async touch(roomId: string, role: Role) {
+    await this.room(roomId).touch(role);
+  }
+
+  async publish(roomId: string, from: Role, payload: SignalPayload) {
+    return this.room(roomId).publish(from, payload);
+  }
+
+  async waitSignals(roomId: string, after: number, waitMs: number) {
+    const started = Date.now();
+    while (Date.now() - started < waitMs) {
+      const signals = await this.room(roomId).signalsAfter(after);
+      if (signals.length > 0) return signals;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    return [];
+  }
+
+  async createNavigation(roomId: string, url: string) {
+    const now = Date.now();
+    const record: NavigationRecord = {
+      id: randomId(18),
+      roomId,
+      url,
+      createdAt: now,
+      expiresAt: now + NAV_TTL_MS,
+    };
+    await this.nav(record.id).save(record);
+    return record;
+  }
+
+  async getNavigation(navigationId: string) {
+    return this.nav(navigationId).load();
+  }
+}
+
+function durableBindings(): DurableBindings | null {
+  try {
+    const { env } = getCloudflareContext();
+    if (env.ROOMS && env.NAVS) {
+      return { ROOMS: env.ROOMS, NAVS: env.NAVS };
+    }
+  } catch {
+    // next dev / Node has no Worker bindings
+  }
+  return null;
+}
+
+export function getStore(): AppStore {
+  const durable = durableBindings();
+  if (durable) {
+    const g = globalThis as typeof globalThis & { __mtDoStore?: AppStore };
+    g.__mtDoStore ??= new DurableStore(durable);
+    return g.__mtDoStore;
+  }
+
+  const redis = redisClient();
+  if (redis) {
+    const g = globalThis as typeof globalThis & { __mtRedisStore?: AppStore };
+    g.__mtRedisStore ??= new RedisStore(redis);
+    return g.__mtRedisStore;
+  }
+
+  const g = globalThis as typeof globalThis & { __mtMemStore?: AppStore };
+  g.__mtMemStore ??= new MemoryStore();
+  return g.__mtMemStore;
 }

@@ -7,7 +7,7 @@ Each person has their own URL bar. When you open a page, the other person sees t
 ## How privacy works
 
 1. You type a URL. It stays in your browser.
-2. This app's **server** stores that URL against an opaque `navigationId` (in memory locally, or Redis on Vercel). It is not kept permanently.
+2. This app's **server** stores that URL against an opaque `navigationId` (in memory locally, Durable Objects on Cloudflare, or Redis on Vercel). It is not kept permanently.
 3. Your peer only receives `{ "type": "navigate", "navigationId": "…" }`.
 4. Their viewer loads `/api/view/<navigationId>`, which fetches and renders the page without exposing the original address.
 
@@ -57,7 +57,7 @@ Workers Builds settings that already work:
 - **Deploy command:** `npx wrangler deploy`
 - **Node.js version:** 22
 
-In the dashboard, set `NAV_ENCRYPTION_KEY`. For two people on separate Worker isolates, also set Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) and TURN (`NEXT_PUBLIC_TURN_*`).
+In the dashboard, set `NAV_ENCRYPTION_KEY`. Room signaling is stored in Durable Objects (`ROOMS` / `NAVS` in `wrangler.jsonc`), so two people on different Worker isolates share the same room. TURN (`NEXT_PUBLIC_TURN_*`) is still needed for many real-world networks.
 
 Local preview in the Workers runtime (needs Node 22):
 
@@ -109,7 +109,7 @@ Synchronization loops are prevented with local/remote apply flags. Only local ac
 - Both people must explicitly join.
 - Screen sharing requires the browser permission UI.
 - Remote control is off until granted, and can be revoked.
-- Proxied pages run in a sandboxed iframe without `allow-same-origin`.
+- Proxied pages load in an iframe with `referrerPolicy="no-referrer"`.
 - Private/link-local addresses are blocked from server-side fetch.
 
 ## Scripts

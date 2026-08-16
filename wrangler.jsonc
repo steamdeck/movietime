@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "movietime",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2026-08-16",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -10,5 +10,15 @@
   },
   "observability": {
     "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "MovieRoom" },
+      { "name": "NAVS", "class_name": "MovieNav" }
+    ]
+  },
+  "exports": {
+    "MovieRoom": { "type": "durable-object", "storage": "sqlite" },
+    "MovieNav": { "type": "durable-object", "storage": "sqlite" }
   }
 }

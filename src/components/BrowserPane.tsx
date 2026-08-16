@@ -149,7 +149,6 @@ export function BrowserPane({
             title={local ? "Your page" : "Other person's page"}
             src={`/api/view/${navigationId}`}
             className="absolute inset-0 h-full w-full bg-white"
-            sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
             referrerPolicy="no-referrer"
             allow="fullscreen"
           />
