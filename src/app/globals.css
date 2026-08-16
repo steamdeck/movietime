@@ -3,25 +3,85 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #100e0c;
+  --fg: #f4eee6;
+  --muted: #9d9388;
+  --panel: #181512;
+  --line: #2a2520;
+  --line-strong: #3c342c;
+  --gold: #d7b06a;
+  --gold-soft: rgba(215, 176, 106, 0.14);
+  --danger: #e07a6a;
+  --danger-soft: rgba(224, 122, 106, 0.14);
+  --ok: #87c39a;
+  --wait: #d7b06a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+.font-serif {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+.url-input {
+  @apply min-w-0 flex-1 rounded-none border border-[var(--line-strong)] bg-[#110f0d] px-3 py-2 text-sm outline-none;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--fg);
+}
+
+.url-input:focus {
+  border-color: var(--gold);
+}
+
+.open-btn {
+  @apply shrink-0 bg-[var(--gold)] px-4 py-2 text-sm text-[#1a140c] transition;
+}
+
+.open-btn:hover {
+  filter: brightness(1.05);
+}
+
+.open-btn:disabled {
+  opacity: 0.6;
+}
+
+.nav-btn {
+  @apply h-9 w-9 shrink-0 border border-[var(--line-strong)] text-sm text-[var(--fg)] disabled:opacity-30;
+}
+
+.bar-btn {
+  @apply border border-[var(--line-strong)] px-3 py-1.5 text-xs text-[var(--fg)] transition hover:border-[var(--gold)] hover:text-[var(--gold)];
+}
+
+.bar-btn.on {
+  background: var(--gold-soft);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.bar-btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-dot {
+  @apply inline-block h-2 w-2 rounded-full;
+}
+
+.status-dot.ok {
+  background: var(--ok);
+}
+
+.status-dot.wait {
+  background: var(--wait);
+}
+
+.status-dot.bad {
+  background: var(--danger);
 }
