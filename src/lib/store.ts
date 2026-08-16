@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { randomId, randomToken } from "./ids";
+import { randomId, randomRoomId, randomToken } from "./ids";
 import type { Role, SignalEnvelope, SignalPayload } from "./protocol";
 
 export const ROOM_TTL_MS = 60 * 60 * 1000;
@@ -76,8 +76,10 @@ class MemoryStore implements AppStore {
     prune(state);
     const now = Date.now();
     const token = randomToken();
+    let id = randomRoomId();
+    while (state.rooms.has(id)) id = randomRoomId();
     const room: RoomRecord = {
-      id: randomId(16),
+      id,
       createdAt: now,
       expiresAt: now + ROOM_TTL_MS,
       participants: { a: { token, lastSeen: now } },
@@ -264,8 +266,14 @@ class RedisStore implements AppStore {
   async createRoom() {
     const now = Date.now();
     const token = randomToken();
+    let id = randomRoomId();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const existing = await this.redis.get(this.roomKey(id));
+      if (!existing) break;
+      id = randomRoomId();
+    }
     const room: RoomRecord = {
-      id: randomId(16),
+      id,
       createdAt: now,
       expiresAt: now + ROOM_TTL_MS,
       participants: { a: { token, lastSeen: now } },

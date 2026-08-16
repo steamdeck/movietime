@@ -104,7 +104,7 @@ Synchronization loops are prevented with local/remote apply flags. Only local ac
 
 ## Security notes
 
-- Room ids are 128-bit random hex values.
+- Room ids are 6 characters: 4 letters + 2 digits, excluding `l`, `i`, `o`, and `0`.
 - Rooms hold at most two participants.
 - Both people must explicitly join.
 - Screen sharing requires the browser permission UI.

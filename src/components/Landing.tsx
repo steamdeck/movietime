@@ -25,8 +25,8 @@ export function Landing() {
   function onJoin(event: FormEvent) {
     event.preventDefault();
     const id = joinId.trim().toLowerCase();
-    if (!/^[a-f0-9]{32}$/.test(id)) {
-      setError("Enter the full room id from the invite link.");
+    if (!/^[abcdefghjkmnpqrstuvwxyz]{4}[1-9]{2}$/.test(id)) {
+      setError("Enter the 6-character room id from the invite.");
       return;
     }
     router.push(`/room/${id}`);
@@ -70,7 +70,8 @@ export function Landing() {
               <input
                 value={joinId}
                 onChange={(e) => setJoinId(e.target.value)}
-                placeholder="Room id"
+                placeholder="abcd12"
+                maxLength={6}
                 className="url-input"
                 spellCheck={false}
               />
