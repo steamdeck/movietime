@@ -15,6 +15,12 @@
  * Explicit tradeoff: the peer's browser must resolve the target to load it,
  * so the address is visible in devtools/network on their machine (not in the
  * UI). Only use Embed mode when both participants accept that.
+ *
+ * Framing model: the embed iframe is deliberately NOT sandboxed. Sandbox
+ * flags (even permissive ones) change the frame's origin/security context,
+ * and hardened players detect that and refuse to load. The embed is
+ * cross-origin, so the same-origin policy already isolates it: it cannot
+ * reach our DOM, storage, or cookies, and we cannot reach into it.
  */
 export function renderEmbedWrapper(goHref: string, navigationId: string): string {
   const safe = JSON.stringify(goHref);
@@ -60,10 +66,9 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
       var SRC = ${safe};
       var stage = document.getElementById("stage");
       var frame = document.createElement("iframe");
-      // Sandboxed: the embed cannot reach our storage, and we deliberately
-      // cannot reach into it (cross-origin) — same deal as any nested
-      // third-party iframe. Playback stays independent per peer.
-      frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups allow-presentation allow-same-origin");
+      // Deliberately unsandboxed: hardened players refuse sandboxed frames.
+      // Isolation comes from the cross-origin boundary instead — the embed
+      // cannot reach our DOM/storage/cookies, and we cannot reach into it.
       frame.setAttribute("referrerpolicy", "no-referrer");
       frame.setAttribute("allow", "fullscreen; autoplay; encrypted-media; picture-in-picture");
       frame.setAttribute("allowfullscreen", "");
