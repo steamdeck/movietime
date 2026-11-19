@@ -25,6 +25,8 @@ export type NavigationRecord = {
   id: string;
   roomId: string;
   url: string;
+  /** "page" = server-fetched + rewritten; "embed" = direct client iframe wrapper. */
+  kind: "page" | "embed";
   createdAt: number;
   expiresAt: number;
 };
@@ -39,7 +41,7 @@ export interface AppStore {
   touch(roomId: string, role: Role): Promise<void>;
   publish(roomId: string, from: Role, payload: SignalPayload): Promise<SignalEnvelope | null>;
   waitSignals(roomId: string, after: number, waitMs: number): Promise<SignalEnvelope[]>;
-  createNavigation(roomId: string, url: string): Promise<NavigationRecord>;
+  createNavigation(roomId: string, url: string, kind?: "page" | "embed"): Promise<NavigationRecord>;
   getNavigation(navigationId: string): Promise<NavigationRecord | null>;
 }
 
@@ -186,13 +188,14 @@ class MemoryStore implements AppStore {
     });
   }
 
-  async createNavigation(roomId: string, url: string) {
+  async createNavigation(roomId: string, url: string, kind: "page" | "embed" = "page") {
     const state = memoryState();
     const now = Date.now();
     const record: NavigationRecord = {
       id: randomId(18),
       roomId,
       url,
+      kind,
       createdAt: now,
       expiresAt: now + NAV_TTL_MS,
     };
@@ -375,12 +378,13 @@ class RedisStore implements AppStore {
     return [];
   }
 
-  async createNavigation(roomId: string, url: string) {
+  async createNavigation(roomId: string, url: string, kind: "page" | "embed" = "page") {
     const now = Date.now();
     const record: NavigationRecord = {
       id: randomId(18),
       roomId,
       url,
+      kind,
       createdAt: now,
       expiresAt: now + NAV_TTL_MS,
     };
@@ -447,12 +451,13 @@ class DurableStore implements AppStore {
     return [];
   }
 
-  async createNavigation(roomId: string, url: string) {
+  async createNavigation(roomId: string, url: string, kind: "page" | "embed" = "page") {
     const now = Date.now();
     const record: NavigationRecord = {
       id: randomId(18),
       roomId,
       url,
+      kind,
       createdAt: now,
       expiresAt: now + NAV_TTL_MS,
     };

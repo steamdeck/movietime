@@ -1,4 +1,6 @@
 import { rewriteHtml } from "@/lib/html-rewrite";
+import { renderEmbedWrapper } from "@/lib/embed-wrapper";
+import { sealUrl } from "@/lib/url-crypto";
 import { fetchHtml } from "@/lib/fetch-page";
 import { isOpaqueId } from "@/lib/ids";
 import { getStore } from "@/lib/store";
@@ -65,6 +67,22 @@ export async function GET(
   }
 
   try {
+    if (navigation.kind === "embed") {
+      // No server fetch: the wrapper page points each browser directly at
+      // the sealed target. Bot-walled hosts that 403 datacenter fetches load
+      // here because we never fetch — same as a nested iframe.
+      const src = `/api/asset?t=${encodeURIComponent(sealUrl(navigation.url))}`;
+      return new Response(renderEmbedWrapper(src, navigation.id), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Frame-Options": "SAMEORIGIN",
+          "Content-Security-Policy": "frame-ancestors 'self'",
+        },
+      });
+    }
     const fetched = await fetchHtml(navigation.url);
     if (!contentIsHtml(fetched.contentType)) {
       return new Response(

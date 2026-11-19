@@ -135,7 +135,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
     setNotice("Sync channel is not open yet — your peer will catch up when it connects.");
   }
 
-  async function openUrl(raw: string) {
+  async function openUrl(raw: string, mode: "page" | "embed" = "page") {
     if (!token || busy) return;
     const trimmed = raw.trim();
     if (!trimmed) return;
@@ -146,11 +146,14 @@ export function RoomClient({ roomId }: { roomId: string }) {
       const res = await fetch("/api/navigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId, url: withProtocol, token }),
+        body: JSON.stringify({ roomId, url: withProtocol, token, mode }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setNotice(data.error || "Could not open that page.");
+        setNotice(
+          (data.error || "Could not open that page.") +
+            (data.hint ? ` ${data.hint}` : "")
+        );
         return;
       }
       const entry: HistoryEntry = { navigationId: data.navigationId, url: withProtocol };
@@ -350,6 +353,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
             urlValue={urlValue}
             onUrlChange={setUrlValue}
             onOpen={() => openUrl(urlValue)}
+            onEmbed={() => openUrl(urlValue, "embed")}
             onBack={() => goHistory(-1)}
             onForward={() => goHistory(1)}
             onReload={reload}

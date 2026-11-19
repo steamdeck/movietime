@@ -19,6 +19,7 @@ type BrowserPaneProps = {
   urlValue?: string;
   onUrlChange?: (value: string) => void;
   onOpen?: () => void;
+  onEmbed?: () => void;
   onBack?: () => void;
   onForward?: () => void;
   onReload?: () => void;
@@ -39,6 +40,7 @@ export function BrowserPane({
   urlValue,
   onUrlChange,
   onOpen,
+  onEmbed,
   onBack,
   onForward,
   onReload,
@@ -150,6 +152,14 @@ export function BrowserPane({
             />
             <button type="submit" className="open-btn">
               Open
+            </button>
+            <button
+              type="button"
+              className="open-btn"
+              title="Embed directly: for video/bot-protected pages. Loads in both browsers without server fetching."
+              onClick={onEmbed}
+            >
+              Embed
             </button>
           </form>
         ) : (
