@@ -1,5 +1,17 @@
 import type { Role, SignalEnvelope, SignalPayload } from "./protocol";
 
+function tokenKey(roomId: string) {
+  return `mt:${roomId}:token`;
+}
+
+function storedToken(roomId: string): string | null {
+  try {
+    return sessionStorage.getItem(tokenKey(roomId));
+  } catch {
+    return null;
+  }
+}
+
 export class SignalingClient {
   private after = 0;
   private aborted = false;
@@ -25,15 +37,18 @@ export class SignalingClient {
     await fetch(`/api/rooms/${this.roomId}/signal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: this.role, payload }),
+      body: JSON.stringify({ role: this.role, token: storedToken(this.roomId), payload }),
     });
   }
 
   private async loop() {
     while (!this.aborted) {
       try {
+        const token = storedToken(this.roomId);
         const res = await fetch(
-          `/api/rooms/${this.roomId}/signal?role=${this.role}&after=${this.after}`,
+          `/api/rooms/${this.roomId}/signal?role=${this.role}&token=${encodeURIComponent(
+            token || ""
+          )}&after=${this.after}`,
           { cache: "no-store" }
         );
         if (!res.ok) {

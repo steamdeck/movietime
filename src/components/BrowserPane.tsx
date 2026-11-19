@@ -59,6 +59,10 @@ export function BrowserPane({
   useEffect(() => {
     if (!postToFrameRef) return;
     postToFrameRef.current = (data: object) => {
+      // Sandboxed opaque-origin frame: any fixed origin would be wrong.
+      // The BrowserPane always talks to its own iframe, so targetOrigin "*"
+      // is safe here (the page cannot see these messages' contents anyway,
+      // and the DOM/shim only acts on "movietime"-namespaced payloads).
       iframeRef.current?.contentWindow?.postMessage({ ns: "movietime", ...data }, "*");
     };
     return () => {
@@ -68,6 +72,12 @@ export function BrowserPane({
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
+      // Our proxied page runs in a sandboxed, opaque-origin frame, so its
+      // messages arrive with origin "null". The source check below is the
+      // real authentication: only our direct iframe may drive the shell.
+      // Anything else (nested ad/tracker frames, stray senders) is ignored.
+      if (event.origin !== window.location.origin && event.origin !== "null") return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
       const data = event.data as FrameEvent & { ns?: string };
       if (!data || data.ns !== "movietime") return;
       if (navigationId && data.navigationId && data.navigationId !== navigationId) return;
@@ -158,6 +168,7 @@ export function BrowserPane({
             src={`/api/view/${navigationId}`}
             className="absolute inset-0 h-full w-full bg-white"
             referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-forms allow-popups"
             allow="fullscreen"
           />
         ) : (

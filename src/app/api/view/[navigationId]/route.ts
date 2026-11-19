@@ -6,6 +6,20 @@ import { getStore } from "@/lib/store";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function contentIsHtml(contentType: string): boolean {
+  // fetchHtml sends Accept: text/html and can return error pages with odd
+  // types, but a declared non-HTML payload (image/PDF/octet-stream) should
+  // never be rendered as a page — the bytes would only show as garbage.
+  // text/* and */*+xml are given the benefit of the doubt (some servers
+  // mislabel XHTML); everything else is rejected.
+  const type = contentType.split(";")[0].trim().toLowerCase();
+  if (!type || type === "application/octet-stream") return false;
+  if (type === "text/html" || type === "application/xhtml+xml") return true;
+  if (type.startsWith("text/")) return true;
+  if (type.endsWith("+xml")) return true;
+  return false;
+}
+
 function errorPage(message: string) {
   return `<!doctype html>
 <html>
@@ -52,6 +66,18 @@ export async function GET(
 
   try {
     const fetched = await fetchHtml(navigation.url);
+    if (!contentIsHtml(fetched.contentType)) {
+      return new Response(
+        errorPage(
+          "That address is not a web page (it looks like a file download). " +
+            "Open it with the asset proxy or screen-share it instead."
+        ),
+        {
+          status: 422,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+        }
+      );
+    }
     const html = rewriteHtml(fetched.body.toString("utf8"), fetched.finalUrl, navigation.id);
     return new Response(html, {
       status: fetched.status === 200 ? 200 : fetched.status,

@@ -77,7 +77,58 @@ export function parseSyncMessage(raw: string): SyncMessage | null {
   if (typeof record.type !== "string" || !SYNC_TYPES.has(record.type as SyncMessage["type"])) {
     return null;
   }
+  if (!validShape(record)) return null;
   return data as SyncMessage;
+}
+
+function validShape(record: Record<string, unknown>): boolean {
+  switch (record.type) {
+    case "navigate":
+      return typeof record.navigationId === "string" && /^[a-f0-9]{24,64}$/.test(record.navigationId);
+    case "scroll": {
+      if (typeof record.x !== "number" || typeof record.y !== "number") return false;
+      if (!Number.isFinite(record.x) || !Number.isFinite(record.y)) return false;
+      if (Math.abs(record.x) > 100_000 || Math.abs(record.y) > 100_000) return false;
+      if (typeof record.timestamp !== "number" || !Number.isFinite(record.timestamp)) return false;
+      return record.control === undefined || typeof record.control === "boolean";
+    }
+    case "history":
+      if (record.action !== "back" && record.action !== "forward" && record.action !== "reload") {
+        return false;
+      }
+      return (
+        record.navigationId === undefined ||
+        (typeof record.navigationId === "string" &&
+          /^[a-f0-9]{24,64}$/.test(record.navigationId))
+      );
+    case "video:play":
+    case "video:pause":
+    case "video:seek":
+      if (typeof record.position !== "number" || !Number.isFinite(record.position)) return false;
+      if (record.position < 0 || record.position > 24 * 3600) return false;
+      if (typeof record.timestamp !== "number" || !Number.isFinite(record.timestamp)) return false;
+      if (record.type === "video:seek" && "rate" in record) return false;
+      return record.control === undefined || typeof record.control === "boolean";
+    case "video:rate":
+      if (typeof record.rate !== "number" || !Number.isFinite(record.rate)) return false;
+      if (record.rate <= 0 || record.rate > 4) return false;
+      if (typeof record.position !== "number" || !Number.isFinite(record.position)) return false;
+      if (record.position < 0 || record.position > 24 * 3600) return false;
+      if (typeof record.timestamp !== "number" || !Number.isFinite(record.timestamp)) return false;
+      return record.control === undefined || typeof record.control === "boolean";
+    case "ping":
+    case "pong":
+      return typeof record.t === "number" && Number.isFinite(record.t);
+    case "control:request":
+    case "control:grant":
+    case "control:revoke":
+    case "control:deny":
+    case "screenshare:start":
+    case "screenshare:stop":
+      return true;
+    default:
+      return false;
+  }
 }
 
 export function assertNoUrl(message: SyncMessage): boolean {

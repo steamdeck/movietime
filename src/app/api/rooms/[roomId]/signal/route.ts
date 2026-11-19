@@ -21,6 +21,14 @@ function isSignalPayload(value: unknown): value is SignalPayload {
   return true;
 }
 
+async function authorized(roomId: string, role: unknown, token: unknown): Promise<boolean> {
+  if (!isRole(role) || typeof token !== "string" || !token) return false;
+  const room = await getStore().getRoom(roomId);
+  if (!room) return false;
+  const expected = room.participants[role]?.token;
+  return !!expected && token.length === expected.length && token === expected;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ roomId: string }> }
@@ -32,13 +40,15 @@ export async function GET(
   const url = new URL(req.url);
   const after = Number(url.searchParams.get("after") || "0");
   const role = url.searchParams.get("role");
+  const token = url.searchParams.get("token");
+  if (!(await authorized(roomId, role, token))) {
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
+  }
   if (!isRole(role)) {
     return jsonNoStore({ error: "Invalid role" }, { status: 400 });
   }
 
   const store = getStore();
-  const room = await store.getRoom(roomId);
-  if (!room) return jsonNoStore({ error: "Room not found" }, { status: 404 });
   await store.touch(roomId, role);
 
   const messages = await store.waitSignals(roomId, Number.isFinite(after) ? after : 0, 8000);
@@ -55,9 +65,12 @@ export async function POST(
     return jsonNoStore({ error: "Invalid room" }, { status: 400 });
   }
 
-  const body = (await req.json()) as { role?: unknown; payload?: unknown };
+  const body = (await req.json()) as { role?: unknown; token?: unknown; payload?: unknown };
   if (!isRole(body.role) || !isSignalPayload(body.payload)) {
     return jsonNoStore({ error: "Invalid signal" }, { status: 400 });
+  }
+  if (!(await authorized(roomId, body.role, body.token))) {
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const store = getStore();

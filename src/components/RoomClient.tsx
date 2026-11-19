@@ -103,9 +103,24 @@ export function RoomClient({ roomId }: { roomId: string }) {
     if (!synced) return;
     const id = window.setInterval(() => {
       sendSync({ type: "ping", t: Date.now() });
-    }, 8000);
+    }, 15000);
     return () => window.clearInterval(id);
   }, [sendSync, synced]);
+
+  useEffect(() => {
+    if (!synced || !token) return;
+    setLocalHistory((history) => {
+      if (!history.length) return history;
+      for (const entry of history) {
+        peer.sendSync({ type: "navigate", navigationId: entry.navigationId });
+      }
+      return history;
+    });
+    // Resync our latest page when the DataChannel (re)opens: messages sent
+    // while closed are dropped by sendSync (it returns false), so the joiner
+    // or a reconnecting peer would otherwise stay on a blank pane.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synced]);
 
   const occupiedHint = useMemo(() => {
     if (session.status !== "ready") return "Joining…";
@@ -115,6 +130,10 @@ export function RoomClient({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (peerSharing) setMobilePane("them");
   }, [peerSharing]);
+
+  function notifySyncDropped() {
+    setNotice("Sync channel is not open yet — your peer will catch up when it connects.");
+  }
 
   async function openUrl(raw: string) {
     if (!token || busy) return;
@@ -137,7 +156,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
       const entry: HistoryEntry = { navigationId: data.navigationId, url: withProtocol };
       setLocalHistory((history) => [...history.slice(0, localIndex + 1), entry]);
       setLocalIndex((index) => index + 1);
-      peer.sendSync({ type: "navigate", navigationId: data.navigationId });
+      if (!peer.sendSync({ type: "navigate", navigationId: data.navigationId })) {
+        notifySyncDropped();
+      }
     } catch {
       setNotice("Could not open that page.");
     } finally {
@@ -151,17 +172,23 @@ export function RoomClient({ roomId }: { roomId: string }) {
     if (!entry) return;
     setLocalIndex(next);
     if (entry.url) setUrlValue(entry.url);
-    peer.sendSync({
-      type: "history",
-      action: direction < 0 ? "back" : "forward",
-      navigationId: entry.navigationId,
-    });
+    if (
+      !peer.sendSync({
+        type: "history",
+        action: direction < 0 ? "back" : "forward",
+        navigationId: entry.navigationId,
+      })
+    ) {
+      notifySyncDropped();
+    }
   }
 
   function reload() {
     if (!localNavId) return;
     setLocalReload((n) => n + 1);
-    peer.sendSync({ type: "history", action: "reload", navigationId: localNavId });
+    if (!peer.sendSync({ type: "history", action: "reload", navigationId: localNavId })) {
+      notifySyncDropped();
+    }
   }
 
   function onLocalFrame(event: FrameEvent) {

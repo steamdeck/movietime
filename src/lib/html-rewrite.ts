@@ -19,13 +19,16 @@ const REWRITE_ATTRS: Array<[string, string]> = [
   ["image", "href"],
 ];
 
+const UNSAFE_URL = /^(javascript|vbscript|file|gopher|expect|php):/i;
+const UNSAFE_DATA_URL = /^data:text\/html/i;
+
 function assetUrl(absolute: string): string {
   return `/api/asset?t=${encodeURIComponent(sealUrl(absolute))}`;
 }
 
 function resolveUrl(value: string, baseUrl: string): string | null {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.startsWith("javascript:") || trimmed.startsWith("mailto:") || trimmed.startsWith("tel:")) {
+  if (!trimmed || UNSAFE_URL.test(trimmed) || trimmed.startsWith("mailto:") || trimmed.startsWith("tel:")) {
     return null;
   }
   if (trimmed.startsWith("data:") || trimmed.startsWith("blob:") || trimmed.startsWith("#")) {
@@ -39,31 +42,55 @@ function resolveUrl(value: string, baseUrl: string): string | null {
 }
 
 function rewriteSrcset(value: string, baseUrl: string): string {
-  return value
+  const parts = value
     .split(",")
     .map((part) => {
-      const bits = part.trim().split(/\s+/);
-      const url = bits[0];
+      const text = part.trim();
+      if (!text) return null;
+      const bits = text.split(/\s+/);
+      const head = bits[0] || "";
+      // Keep opaque URLs the proxy must not touch.
+      if (/^(data|blob):/i.test(head) || head.startsWith("#")) return text;
+      const absolute = resolveUrl(head, baseUrl);
+      if (!absolute) {
+        // Unresolvable (e.g. javascript:) — drop the candidate.
+        if (UNSAFE_URL.test(head) || UNSAFE_DATA_URL.test(head)) return null;
+        return text;
+      }
       const rest = bits.slice(1).join(" ");
-      const absolute = resolveUrl(url, baseUrl);
-      if (!absolute) return part.trim();
       return rest ? `${assetUrl(absolute)} ${rest}` : assetUrl(absolute);
     })
-    .join(", ");
+    .filter((part): part is string => part !== null);
+  return parts.join(", ");
 }
 
 function rewriteCss(css: string, baseUrl: string): string {
-  return css.replace(/url\((['"]?)(.*?)\1\)/g, (full, _quote, inner: string) => {
-    const absolute = resolveUrl(inner, baseUrl);
+  // Rewrite @import "..." / @import '...' (no url(...)) first.
+  let out = css.replace(
+    /@import\s+(?!url\()("([^"]+)"|'([^']+)')/g,
+    (full, _quoted: string, double: string, single: string) => {
+      const absolute = resolveUrl(double || single || "", baseUrl);
+      if (!absolute) return full;
+      return `@import "${assetUrl(absolute)}"`;
+    }
+  );
+  out = out.replace(/url\((['"]?)(.*?)\1\)/g, (full, _quote, inner: string) => {
+    const trimmed = (inner || "").trim();
+    if (UNSAFE_URL.test(trimmed) || UNSAFE_DATA_URL.test(trimmed)) {
+      return `url("#blocked")`;
+    }
+    const absolute = resolveUrl(trimmed, baseUrl);
     if (!absolute) return full;
     return `url("${assetUrl(absolute)}")`;
   });
+  return out;
 }
 
-export function injectScriptSource(navigationId: string): string {
+export function injectScriptSource(navigationId: string, interactive = true): string {
   return `
 (function(){
   var NAV_ID = ${JSON.stringify(navigationId)};
+  var INTERACTIVE = ${interactive ? "true" : "false"};
   var applying = false;
   var lastScroll = 0;
   function send(msg){
@@ -116,28 +143,53 @@ export function injectScriptSource(navigationId: string): string {
     } catch (e) {}
   }
 
-  document.addEventListener("click", function(e){
+  function closestLink(node){
+    while (node) {
+      if (node.tagName === "A") return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function onLinkClick(e){
     var t = e.target;
     if (t && t.nodeType === 3) t = t.parentElement;
-    var a = t && t.closest ? t.closest("a") : null;
+    var a = t && t.closest ? t.closest("a") : closestLink(t);
     if (!a || !a.href) return;
-    if (a.target === "_blank") return;
     var href = a.getAttribute("href") || "";
-    if (href.startsWith("#")) return;
+    if (href.startsWith("#")) { e.preventDefault(); return; }
+    if (/^(mailto|tel):/i.test(href)) return;
     e.preventDefault();
+    if (!INTERACTIVE) return;
     follow(a.href);
-  }, true);
+  }
+
+  document.addEventListener("click", onLinkClick, true);
+  document.addEventListener("auxclick", onLinkClick, true);
 
   document.addEventListener("submit", function(e){
     var form = e.target;
     if (!form || form.tagName !== "FORM") return;
     e.preventDefault();
-    follow(form.action || location.href);
+    if (!INTERACTIVE) return;
+    var action = form.action || location.href;
+    try {
+      if ((form.method || "get").toLowerCase() === "get") {
+        var params = new URLSearchParams(new FormData(form));
+        var url = new URL(action, location.href);
+        params.forEach(function(v, k){ url.searchParams.set(k, v); });
+        action = url.href;
+      }
+    } catch (err) {}
+    follow(action);
   }, true);
 
   window.addEventListener("message", function(event){
     var data = event.data;
     if (!data || data.ns !== "movietime") return;
+    // Only the viewer shell (our parent window) may drive this page.
+    // Nested third-party frames must not be able to spoof scroll/video.
+    if (event.source !== window.parent) return;
     applying = true;
     try {
       if (data.type === "scroll") {
@@ -167,21 +219,62 @@ export function injectScriptSource(navigationId: string): string {
 })();`.trim();
 }
 
-export function rewriteHtml(html: string, baseUrl: string, navigationId: string): string {
+export function rewriteHtml(
+  html: string,
+  baseUrl: string,
+  navigationId: string,
+  options?: { interactive?: boolean }
+): string {
   const $ = cheerio.load(html);
+  const interactive = options?.interactive ?? true;
 
-  $('meta[http-equiv="refresh"]').remove();
-  $('meta[http-equiv="Content-Security-Policy"]').remove();
+  // The proxied page must never run its own scripts in our origin. Our sync
+  // shim below is the only script that survives.
+  $("script").remove();
+  $("applet, object, embed").remove();
+  $("frame").remove();
+  $("frameset").each((_, el) => {
+    $(el).replaceWith($(el).html() || "");
+  });
+  $('link[rel="import" i]').remove();
+
+  // Case-insensitive refresh / CSP handling (attribute values vary in case).
+  $("meta").each((_, el) => {
+    const equiv = ($(el).attr("http-equiv") || "").toLowerCase();
+    if (equiv === "refresh" || equiv === "content-security-policy") {
+      $(el).remove();
+    }
+  });
   $("base").remove();
+
+  // Strip inline event handlers (onclick=..., onload=..., ...).
+  $("*").each((_, el) => {
+    if (el.type !== "tag") return;
+    const attribs = (el as { attribs?: Record<string, string> }).attribs || {};
+    for (const name of Object.keys(attribs)) {
+      if (/^on/i.test(name)) $(el).removeAttr(name);
+    }
+  });
 
   for (const [tag, attr] of REWRITE_ATTRS) {
     $(tag).each((_, el) => {
-      const value = $(el).attr(attr);
-      if (!value) return;
-      const absolute = resolveUrl(value, baseUrl);
+      const raw = ($(el).attr(attr) || "").trim();
+      if (!raw) return;
+      if (UNSAFE_URL.test(raw) || UNSAFE_DATA_URL.test(raw)) {
+        $(el).removeAttr(attr);
+        return;
+      }
+      const absolute = resolveUrl(raw, baseUrl);
       if (absolute) $(el).attr(attr, assetUrl(absolute));
     });
   }
+
+  // Nested frames stay inert: rewritten above, now forced maximally sandboxed
+  // so embedded documents cannot run scripts even if served as HTML.
+  $("iframe").each((_, el) => {
+    $(el).attr("sandbox", "");
+    $(el).attr("referrerpolicy", "no-referrer");
+  });
 
   $("[srcset]").each((_, el) => {
     const value = $(el).attr("srcset");
@@ -200,7 +293,7 @@ export function rewriteHtml(html: string, baseUrl: string, navigationId: string)
 
   $("a, area, form, iframe").attr("referrerpolicy", "no-referrer");
 
-  const script = `<script>${injectScriptSource(navigationId)}</script>`;
+  const script = `<script>${injectScriptSource(navigationId, interactive)}</script>`;
   if ($("body").length) {
     $("body").append(script);
   } else {
