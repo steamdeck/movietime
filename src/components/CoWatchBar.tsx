@@ -81,6 +81,22 @@ export function CoWatchBar(props: {
                   </button>
                   <button
                     type="button"
+                    className="bar-btn"
+                    title="Tell both sides to jump back 10s (each person seeks their own player), then use 3-2-1 Play"
+                    onClick={() => props.onSeek(Math.max(0, position - 10))}
+                  >
+                    −10s both
+                  </button>
+                  <button
+                    type="button"
+                    className="bar-btn"
+                    title="Tell both sides to jump forward 10s (each person seeks their own player), then use 3-2-1 Play"
+                    onClick={() => props.onSeek(position + 10)}
+                  >
+                    +10s both
+                  </button>
+                  <button
+                    type="button"
                     className="bar-btn on"
                     onClick={() => {
                       const at = parseDraft() ?? position;
