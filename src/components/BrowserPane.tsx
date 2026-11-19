@@ -125,6 +125,14 @@ export function BrowserPane({
       ) : null}
 
       <div className="flex items-center gap-1.5 border-b border-[var(--line)] px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+        {navigationId ? (
+          <span
+            className="hidden max-w-44 shrink-0 truncate font-mono text-[10px] text-[var(--muted)] sm:block"
+            title={`view ${navigationId} · ${embed ? "embed" : "page"}`}
+          >
+            {navigationId.slice(0, 8)}·{embed ? "embed" : "page"}
+          </span>
+        ) : null}
         <button type="button" className="nav-btn" onClick={onBack} disabled={!local || !canBack} aria-label="Back">
           ←
         </button>
