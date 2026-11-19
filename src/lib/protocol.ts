@@ -19,6 +19,10 @@ export type SyncMessage =
   | { type: "screenshare:start" }
   | { type: "screenshare:stop" }
   | { type: "sync:state"; scroll: boolean; video: boolean; t: number }
+  | { type: "cowatch:start"; at: number; t: number }
+  | { type: "cowatch:pause"; at: number; t: number }
+  | { type: "cowatch:seek"; at: number; t: number }
+  | { type: "cowatch:stop" }
   | { type: "ping"; t: number }
   | { type: "pong"; t: number };
 
@@ -58,6 +62,10 @@ const SYNC_TYPES = new Set<SyncMessage["type"]>([
   "screenshare:start",
   "screenshare:stop",
   "sync:state",
+  "cowatch:start",
+  "cowatch:pause",
+  "cowatch:seek",
+  "cowatch:stop",
   "ping",
   "pong",
 ]);
@@ -133,6 +141,19 @@ function validShape(record: Record<string, unknown>): boolean {
         typeof record.t === "number" &&
         Number.isFinite(record.t)
       );
+    case "cowatch:start":
+    case "cowatch:pause":
+    case "cowatch:seek":
+      return (
+        typeof record.at === "number" &&
+        Number.isFinite(record.at) &&
+        record.at >= 0 &&
+        record.at <= 24 * 3600 &&
+        typeof record.t === "number" &&
+        Number.isFinite(record.t)
+      );
+    case "cowatch:stop":
+      return true;
     case "control:request":
     case "control:grant":
     case "control:revoke":

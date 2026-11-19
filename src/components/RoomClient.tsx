@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BrowserPane, type FrameEvent } from "@/components/BrowserPane";
 import { ConnectionBar } from "@/components/ConnectionBar";
+import { CoWatchBar } from "@/components/CoWatchBar";
 import { usePeerSession } from "@/hooks/usePeerSession";
+import { useCoWatch } from "@/hooks/useCoWatch";
 import { useRoomJoin } from "@/hooks/useRoomJoin";
 import type { SyncMessage } from "@/lib/protocol";
 
@@ -41,10 +43,25 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [remoteNavKind, setRemoteNavKind] = useState<"page" | "embed">("page");
   const [localSync, setLocalSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
   const [remoteSync, setRemoteSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
+  const coWatch = useCoWatch({
+    sendSync: (message) => peerRef.current?.sendSync(message as SyncMessage) ?? false,
+    onNotice: setNotice,
+  });
+  const coWatchRef = useRef(coWatch);
+  coWatchRef.current = coWatch;
 
   const onSyncMessage = useCallback((message: SyncMessage) => {
     if (message.type === "sync:state") {
       setRemoteSync({ scroll: message.scroll, video: message.video });
+      return;
+    }
+    if (
+      message.type === "cowatch:start" ||
+      message.type === "cowatch:pause" ||
+      message.type === "cowatch:seek" ||
+      message.type === "cowatch:stop"
+    ) {
+      coWatchRef.current.applyRemote(message);
       return;
     }
     if (message.type === "ping") {
@@ -363,6 +380,19 @@ export function RoomClient({ roomId }: { roomId: string }) {
       {synced ? (
         <SyncStatus local={localSync} remote={remoteSync} remoteKind={remoteNavKind} />
       ) : null}
+
+      <CoWatchBar
+        role={coWatch.role}
+        state={coWatch.state}
+        countdown={coWatch.countdown}
+        embedActive={localNavKind === "embed" || remoteNavKind === "embed"}
+        synced={synced}
+        onStart={coWatch.startHosting}
+        onStop={coWatch.stop}
+        onPlay={coWatch.hostPlay}
+        onPause={coWatch.hostPause}
+        onSeek={coWatch.hostSeek}
+      />
 
       <div
         className="grid grid-cols-2 border-b border-[var(--line)] bg-[var(--panel)] lg:hidden"
