@@ -10,6 +10,8 @@ export type FrameEvent = {
   timestamp?: number;
   position?: number;
   rate?: number;
+  scroll?: boolean;
+  video?: boolean;
 };
 
 type BrowserPaneProps = {

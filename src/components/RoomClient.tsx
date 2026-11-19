@@ -39,8 +39,19 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const localNavKind: "page" | "embed" =
     localIndex >= 0 ? localHistory[localIndex]?.kind ?? "page" : "page";
   const [remoteNavKind, setRemoteNavKind] = useState<"page" | "embed">("page");
+  const [localSync, setLocalSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
+  const [remoteSync, setRemoteSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
 
   const onSyncMessage = useCallback((message: SyncMessage) => {
+    if (message.type === "sync:state") {
+      setRemoteSync({ scroll: message.scroll, video: message.video });
+      return;
+    }
+    if (message.type === "ping") {
+      peerRef.current?.sendSync({ type: "pong", t: message.t });
+      return;
+    }
+    if (message.type === "pong") return;
     if (message.type === "navigate") {
       applyingRemote.current = true;
       setRemoteNavId(message.navigationId);
@@ -103,6 +114,8 @@ export function RoomClient({ roomId }: { roomId: string }) {
     enabled: session.status === "ready",
     onSyncMessage,
   });
+  const peerRef = useRef(peer);
+  peerRef.current = peer;
 
   const { sendSync, synced } = peer;
 
@@ -224,6 +237,13 @@ export function RoomClient({ roomId }: { roomId: string }) {
   }
 
   function onLocalFrame(event: FrameEvent) {
+    if (event.type === "sync:state" && !applyingLocal.current) {
+      setLocalSync({
+        scroll: event.scroll ?? false,
+        video: event.video ?? false,
+      });
+      return;
+    }
     if (event.type === "navigate" && event.navigationId && !applyingLocal.current) {
       setLocalHistory((history) => [
         ...history.slice(0, localIndex + 1),
@@ -340,6 +360,10 @@ export function RoomClient({ roomId }: { roomId: string }) {
         </p>
       ) : null}
 
+      {synced ? (
+        <SyncStatus local={localSync} remote={remoteSync} remoteKind={remoteNavKind} />
+      ) : null}
+
       <div
         className="grid grid-cols-2 border-b border-[var(--line)] bg-[var(--panel)] lg:hidden"
         role="tablist"
@@ -428,6 +452,48 @@ export function RoomClient({ roomId }: { roomId: string }) {
         Sites that block fetching still require explicit screen sharing. Browser security rules
         are not bypassed.
       </footer>
+    </div>
+  );
+}
+
+function SyncStatus({
+  local,
+  remote,
+  remoteKind,
+}: {
+  local: { scroll: boolean; video: boolean } | null;
+  remote: { scroll: boolean; video: boolean } | null;
+  remoteKind: "page" | "embed";
+}) {
+  function dot(ok: boolean | null, label: string) {
+    const tone =
+      ok === null ? "bg-[var(--muted)]" : ok ? "bg-emerald-400" : "bg-[var(--danger)]";
+    return (
+      <span className="inline-flex items-center gap-1.5" title={label}>
+        <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
+        <span>{label}</span>
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--line)] bg-[var(--panel)] px-3 py-1.5 text-xs text-[var(--muted)] sm:px-4">
+      <span className="uppercase tracking-[0.18em] text-[var(--gold)]">Sync</span>
+      <span className="inline-flex items-center gap-1.5">
+        you {dot(local?.scroll ?? null, "scroll")} {dot(local?.video ?? null, "video")}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        them {dot(remote?.scroll ?? null, "scroll")} {dot(remote?.video ?? null, "video")}
+      </span>
+      {remoteKind === "embed" ? (
+        <span title="Embeds load directly in each browser; playback cannot be observed or driven.">
+          embeds: independent playback
+        </span>
+      ) : null}
+      {local && !local.scroll ? (
+        <span title="This page has nothing to scroll, so scroll sync has nothing to do.">
+          page not scrollable
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -105,6 +105,20 @@ export function injectScriptSource(navigationId: string, interactive = true): st
   }
   window.addEventListener("scroll", onScroll, { passive: true });
 
+  function hasScrollableRoot(){
+    var el = document.scrollingElement || document.documentElement;
+    return !!(el && el.scrollHeight > (window.innerHeight || 0) + 4);
+  }
+  function hasVideo(){
+    return !!document.querySelector("video");
+  }
+  function reportState(){
+    send({ type: "sync:state", scroll: hasScrollableRoot(), video: hasVideo(), timestamp: Date.now() });
+  }
+  window.addEventListener("load", function(){ setTimeout(reportState, 300); });
+  setTimeout(reportState, 1500);
+  setTimeout(reportState, 5000);
+
   function bindVideo(video){
     if (video.__mtBound) return;
     video.__mtBound = true;

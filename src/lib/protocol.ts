@@ -18,6 +18,7 @@ export type SyncMessage =
   | { type: "control:deny" }
   | { type: "screenshare:start" }
   | { type: "screenshare:stop" }
+  | { type: "sync:state"; scroll: boolean; video: boolean; t: number }
   | { type: "ping"; t: number }
   | { type: "pong"; t: number };
 
@@ -56,6 +57,7 @@ const SYNC_TYPES = new Set<SyncMessage["type"]>([
   "control:deny",
   "screenshare:start",
   "screenshare:stop",
+  "sync:state",
   "ping",
   "pong",
 ]);
@@ -124,6 +126,13 @@ function validShape(record: Record<string, unknown>): boolean {
     case "ping":
     case "pong":
       return typeof record.t === "number" && Number.isFinite(record.t);
+    case "sync:state":
+      return (
+        typeof record.scroll === "boolean" &&
+        typeof record.video === "boolean" &&
+        typeof record.t === "number" &&
+        Number.isFinite(record.t)
+      );
     case "control:request":
     case "control:grant":
     case "control:revoke":
