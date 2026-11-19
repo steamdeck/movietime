@@ -99,8 +99,10 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
       var sestate = document.getElementById("sestate");
       var VENDOR_TYPES = {
         PLAYER_TITLE: 1, TV_INFO: 1, TV_STATE: 1,
-        PLAYER_UI: 1, MEDIA_NOT_FOUND: 1, VS_EXPIRED: 1, VS_DEVTOOLS: 1
+        PLAYER_UI: 1, MEDIA_NOT_FOUND: 1, VS_EXPIRED: 1, VS_DEVTOOLS: 1,
+        PLAYER_EVENT: 1
       };
+      var lastProgress = -1;
       function relayUp(d){
         if (!d || typeof d.type !== "string" || !VENDOR_TYPES[d.type]) return;
         try {
@@ -109,6 +111,32 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
           if (typeof d.season !== "undefined") msg.season = +d.season || 0;
           if (typeof d.episode !== "undefined") msg.episode = +d.episode || 0;
           if (typeof d.visible !== "undefined") msg.visible = !!d.visible;
+          if (d.type === "PLAYER_EVENT" && d.data) {
+            var pd = d.data;
+            if (typeof pd.player_status === "string") msg.pstatus = pd.player_status.slice(0, 16);
+            if (typeof pd.player_progress === "number" && isFinite(pd.player_progress)) {
+              // Throttle progress chatter: forward playing updates only when
+              // the second hand moves; always forward state changes.
+              var sec = Math.floor(pd.player_progress);
+              if (pd.player_status !== "playing" || sec !== lastProgress) {
+                lastProgress = sec;
+                msg.progress = pd.player_progress;
+              } else {
+                return;
+              }
+            }
+            if (typeof pd.player_duration === "number" && isFinite(pd.player_duration)) {
+              msg.duration = pd.player_duration;
+            }
+            if (pd.player_info) {
+              var pi = pd.player_info;
+              if (typeof pi.imdb === "string") msg.imdb = pi.imdb.slice(0, 16);
+              if (typeof pi.tmdb === "string") msg.tmdb = pi.tmdb.slice(0, 16);
+              if (pi.mediaType === "movie" || pi.mediaType === "tv") msg.mediaType = pi.mediaType;
+              if (typeof pi.season !== "undefined") msg.season = +pi.season || 0;
+              if (typeof pi.episode !== "undefined") msg.episode = +pi.episode || 0;
+            }
+          }
           parent.postMessage(msg, "*");
         } catch (e) {}
         // Local display strip (display only — never playback).
@@ -130,6 +158,21 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
           }
         } catch (e) {}
       }
+      // Shell -> player commands (vidsrc Player Controls). The wrapper is the
+      // only sender: { ns movietime, type "embed:cmd", action, value? } from
+      // our direct parent becomes { player: true, action, value? } into the
+      // vendor frame. Anything else is ignored.
+      window.addEventListener("message", function(ev){
+        if (ev.source !== window.parent) return;
+        var m = ev.data;
+        if (!m || m.ns !== "movietime" || m.type !== "embed:cmd") return;
+        if (m.navigationId && m.navigationId !== NAV_ID) return;
+        try {
+          var out = { player: true, action: String(m.action || "").slice(0, 32) };
+          if (typeof m.value === "number" && isFinite(m.value)) out.value = m.value;
+          frame.contentWindow.postMessage(out, "*");
+        } catch (e) {}
+      });
       window.addEventListener("message", function(ev){
         if (ev.source !== frame.contentWindow) return;
         relayUp(ev.data);

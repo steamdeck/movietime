@@ -45,6 +45,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [remoteSync, setRemoteSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
   const [playerTitle, setPlayerTitle] = useState<string | null>(null);
   const [playerEp, setPlayerEp] = useState<{ season?: number; episode?: number } | null>(null);
+  const [playerPos, setPlayerPos] = useState<{ status?: string; progress?: number; duration?: number } | null>(null);
+  // Mirror loop guard: remote-driven player commands must not echo back.
+  const applyingEmbedCmd = useRef(false);
   const coWatch = useCoWatch({
     sendSync: (message) => peerRef.current?.sendSync(message as SyncMessage) ?? false,
     onNotice: setNotice,
@@ -80,6 +83,74 @@ export function RoomClient({ roomId }: { roomId: string }) {
       ) {
         setPlayerEp({ season: message.season, episode: message.episode });
       }
+      if (message.etype === "PLAYER_EVENT") {
+        // Peer's playback snapshot: display it, and mirror state changes
+        // into OUR player (same nav only) — this is the auto-sync path.
+        if (
+          typeof message.progress === "number" ||
+          typeof message.duration === "number" ||
+          typeof message.pstatus === "string"
+        ) {
+          setPlayerPos({
+            status: message.pstatus,
+            progress: message.progress,
+            duration: message.duration,
+          });
+        }
+        const sameNav =
+          message.navigationId && localNavId && message.navigationId === localNavId;
+        if (sameNav && message.etype === "PLAYER_EVENT") {
+          const st = message.pstatus;
+          if (st === "paused") {
+            applyingEmbedCmd.current = true;
+            postLocal.current?.({
+              type: "embed:cmd",
+              navigationId: localNavId,
+              action: "pause",
+            });
+            setTimeout(() => {
+              applyingEmbedCmd.current = false;
+            }, 500);
+          } else if (st === "playing") {
+            applyingEmbedCmd.current = true;
+            postLocal.current?.({
+              type: "embed:cmd",
+              navigationId: localNavId,
+              action: "play",
+            });
+            setTimeout(() => {
+              applyingEmbedCmd.current = false;
+            }, 500);
+          } else if (st === "seeked" && typeof message.progress === "number") {
+            applyingEmbedCmd.current = true;
+            postLocal.current?.({
+              type: "embed:cmd",
+              navigationId: localNavId,
+              action: `seek${Math.floor(message.progress)}`,
+            });
+            setTimeout(() => {
+              applyingEmbedCmd.current = false;
+            }, 500);
+          }
+        }
+      }
+      return;
+    }
+    if (message.type === "embed:cmd") {
+      // Explicit control message from the peer (co-watch buttons): drive OUR
+      // player, same navigation only. Never forwarded onward.
+      if (message.vendor !== "vidsrc") return;
+      if (!localNavId) return;
+      applyingEmbedCmd.current = true;
+      postLocal.current?.({
+        type: "embed:cmd",
+        navigationId: localNavId,
+        action: message.action,
+        ...(typeof message.value === "number" ? { value: message.value } : {}),
+      });
+      setTimeout(() => {
+        applyingEmbedCmd.current = false;
+      }, 500);
       return;
     }
     if (
@@ -290,9 +361,12 @@ export function RoomClient({ roomId }: { roomId: string }) {
     }
     if (event.type === "embed:event" && !applyingLocal.current) {
       // Our own player's display state: show it AND forward to the peer so
-      // their CoWatchBar reads the same title/episode. Allowlisted only —
-      // parseSyncMessage enforces the vendor/etype shape on receipt.
+      // their CoWatchBar reads the same title/episode/position. PLAYER_EVENT
+      // snapshots are forwarded as the peer's mirror source (their wrapper
+      // applies play/pause/seek into their player). Loop-safe: the peer
+      // applies commands via embed:cmd, which never re-emits embed:event.
       if (event.vendor !== "vidsrc") return;
+      if (applyingEmbedCmd.current) return;
       if (typeof event.title === "string") setPlayerTitle(event.title.slice(0, 200));
       if (
         event.etype === "TV_INFO" ||
@@ -301,6 +375,16 @@ export function RoomClient({ roomId }: { roomId: string }) {
         typeof event.episode === "number"
       ) {
         setPlayerEp({ season: event.season, episode: event.episode });
+      }
+      if (
+        event.etype === "PLAYER_EVENT" &&
+        (typeof event.progress === "number" || typeof event.pstatus === "string")
+      ) {
+        setPlayerPos({
+          status: event.pstatus,
+          progress: event.progress,
+          duration: event.duration,
+        });
       }
       peer.sendSync({
         type: "embed:event",
@@ -312,12 +396,34 @@ export function RoomClient({ roomId }: { roomId: string }) {
           | "PLAYER_UI"
           | "MEDIA_NOT_FOUND"
           | "VS_EXPIRED"
-          | "VS_DEVTOOLS",
+          | "VS_DEVTOOLS"
+          | "PLAYER_EVENT",
         navigationId: localNavId ?? undefined,
         ...(typeof event.title === "string" ? { title: event.title.slice(0, 200) } : {}),
         ...(typeof event.season === "number" ? { season: event.season } : {}),
         ...(typeof event.episode === "number" ? { episode: event.episode } : {}),
         ...(typeof event.visible === "boolean" ? { visible: event.visible } : {}),
+        ...(typeof event.pstatus === "string" &&
+        (event.pstatus === "playing" ||
+          event.pstatus === "paused" ||
+          event.pstatus === "completed" ||
+          event.pstatus === "seeked")
+          ? {
+              pstatus: event.pstatus as
+                | "playing"
+                | "paused"
+                | "completed"
+                | "seeked",
+            }
+          : {}),
+        ...(typeof event.progress === "number" ? { progress: event.progress } : {}),
+        ...(typeof event.duration === "number" ? { duration: event.duration } : {}),
+        ...(typeof event.imdb === "string" ? { imdb: event.imdb } : {}),
+        ...(typeof event.tmdb === "string" ? { tmdb: event.tmdb } : {}),
+        ...(typeof event.mediaType === "string" &&
+        (event.mediaType === "movie" || event.mediaType === "tv")
+          ? { mediaType: event.mediaType as "movie" | "tv" }
+          : {}),
       });
       return;
     }
@@ -449,11 +555,31 @@ export function RoomClient({ roomId }: { roomId: string }) {
         synced={synced}
         playerTitle={playerTitle}
         playerEp={playerEp}
+        playerPos={playerPos}
         onStart={coWatch.startHosting}
         onStop={coWatch.stop}
         onPlay={coWatch.hostPlay}
         onPause={coWatch.hostPause}
         onSeek={coWatch.hostSeek}
+        onCmd={(action) => {
+          // Host drives BOTH players directly through the vendor control API.
+          // Our own player: post into our wrapper. Peer's player: mirrored
+          // sync message, applied only on the same navigationId.
+          applyingEmbedCmd.current = true;
+          postLocal.current?.({ type: "embed:cmd", navigationId: localNavId, action });
+          setTimeout(() => {
+            applyingEmbedCmd.current = false;
+          }, 500);
+          if (
+            !peer.sendSync({
+              type: "embed:cmd",
+              vendor: "vidsrc",
+              action,
+            })
+          ) {
+            notifySyncDropped();
+          }
+        }}
       />
 
       <div

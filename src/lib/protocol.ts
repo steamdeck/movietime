@@ -33,12 +33,29 @@ export type SyncMessage =
         | "PLAYER_UI"
         | "MEDIA_NOT_FOUND"
         | "VS_EXPIRED"
-        | "VS_DEVTOOLS";
+        | "VS_DEVTOOLS"
+        | "PLAYER_EVENT";
       navigationId?: string;
       title?: string;
       season?: number;
       episode?: number;
       visible?: boolean;
+      // PLAYER_EVENT playback snapshot (display + mirror source only).
+      pstatus?: "playing" | "paused" | "completed" | "seeked";
+      progress?: number;
+      duration?: number;
+      imdb?: string;
+      tmdb?: string;
+      mediaType?: "movie" | "tv";
+    }
+  | {
+      // Drive the vendor player (vidsrc Player Controls). Fire-and-forget:
+      // read back the result via PLAYER_EVENT. Only mirrored between panes
+      // showing the SAME navigationId; never carries a URL.
+      type: "embed:cmd";
+      vendor: "vidsrc";
+      action: string;
+      value?: number;
     }
   | { type: "ping"; t: number }
   | { type: "pong"; t: number };
@@ -84,6 +101,7 @@ const SYNC_TYPES = new Set<SyncMessage["type"]>([
   "cowatch:seek",
   "cowatch:stop",
   "embed:event",
+  "embed:cmd",
   "ping",
   "pong",
 ]);
@@ -186,7 +204,8 @@ function validShape(record: Record<string, unknown>): boolean {
         etype !== "PLAYER_UI" &&
         etype !== "MEDIA_NOT_FOUND" &&
         etype !== "VS_EXPIRED" &&
-        etype !== "VS_DEVTOOLS"
+        etype !== "VS_DEVTOOLS" &&
+        etype !== "PLAYER_EVENT"
       ) {
         return false;
       }
@@ -211,6 +230,66 @@ function validShape(record: Record<string, unknown>): boolean {
         return false;
       }
       if (record.visible !== undefined && typeof record.visible !== "boolean") {
+        return false;
+      }
+      if (record.etype === "PLAYER_EVENT") {
+        // Playback snapshot allowlist: status + numeric progress/duration +
+        // content identifiers. Used as a mirror source and display only.
+        if (
+          record.pstatus !== undefined &&
+          record.pstatus !== "playing" &&
+          record.pstatus !== "paused" &&
+          record.pstatus !== "completed" &&
+          record.pstatus !== "seeked"
+        ) {
+          return false;
+        }
+        for (const key of ["progress", "duration"] as const) {
+          const value = record[key];
+          if (
+            value !== undefined &&
+            (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+          ) {
+            return false;
+          }
+        }
+        for (const key of ["imdb", "tmdb", "mediaType"] as const) {
+          if (record[key] !== undefined && typeof record[key] !== "string") {
+            return false;
+          }
+        }
+        if (
+          record.mediaType !== undefined &&
+          record.mediaType !== "movie" &&
+          record.mediaType !== "tv"
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case "embed:cmd": {
+      // Outbound player commands. Strictly allowlisted to the vendor's
+      // documented control vocabulary; seek/rate values finite-bounded.
+      if (record.vendor !== "vidsrc") return false;
+      if (typeof record.action !== "string") return false;
+      const ok =
+        record.action === "play" ||
+        record.action === "pause" ||
+        record.action === "mute" ||
+        record.action === "unmute" ||
+        record.action === "rate+" ||
+        record.action === "rate-" ||
+        /^seek-?\d+(\.\d+)?$/.test(record.action) ||
+        /^rate\d+(\.\d+)?$/.test(record.action);
+      if (!ok) return false;
+      if (
+        record.value !== undefined &&
+        (typeof record.value !== "number" ||
+          !Number.isFinite(record.value) ||
+          record.value < 0.25 ||
+          record.value > 4)
+      ) {
         return false;
       }
       return true;

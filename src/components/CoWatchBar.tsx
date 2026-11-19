@@ -11,11 +11,13 @@ export function CoWatchBar(props: {
   synced: boolean;
   playerTitle?: string | null;
   playerEp?: { season?: number; episode?: number } | null;
+  playerPos?: { status?: string; progress?: number; duration?: number } | null;
   onStart: () => void;
   onStop: () => void;
   onPlay: (position: number) => void;
   onPause: (position: number) => void;
   onSeek: (position: number) => void;
+  onCmd?: (action: string, value?: number) => void;
 }) {
   const [draft, setDraft] = useState("0:00");
   const position =
@@ -60,6 +62,21 @@ export function CoWatchBar(props: {
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {props.playerPos &&
+          (typeof props.playerPos.progress === "number" ||
+            typeof props.playerPos.status === "string") ? (
+            <span
+              className="font-mono text-xs"
+              title={
+                props.playerPos.duration
+                  ? `Their player: ${props.playerPos.status} ${formatPosition(props.playerPos.progress ?? 0)} / ${formatPosition(props.playerPos.duration)}`
+                  : `Their player: ${props.playerPos.status}`
+              }
+            >
+              their player {props.playerPos.status ?? "?"} @{" "}
+              {formatPosition(props.playerPos.progress ?? 0)}
+            </span>
+          ) : null}
           {props.role === "off" ? (
             <button
               type="button"
@@ -124,6 +141,42 @@ export function CoWatchBar(props: {
                   >
                     Pause both
                   </button>
+                  {props.onCmd ? (
+                    <>
+                      <button
+                        type="button"
+                        className="bar-btn"
+                        title="Send play straight into both players (both sides must have pressed play once — browser autoplay policy)"
+                        onClick={() => props.onCmd?.("play")}
+                      >
+                        ▶ both
+                      </button>
+                      <button
+                        type="button"
+                        className="bar-btn"
+                        title="Send pause straight into both players"
+                        onClick={() => props.onCmd?.("pause")}
+                      >
+                        ⏸ both
+                      </button>
+                      <button
+                        type="button"
+                        className="bar-btn"
+                        title="Seek both players back 10s directly"
+                        onClick={() => props.onCmd?.("seek-10")}
+                      >
+                        −10s ▶
+                      </button>
+                      <button
+                        type="button"
+                        className="bar-btn"
+                        title="Seek both players forward 10s directly"
+                        onClick={() => props.onCmd?.("seek+10")}
+                      >
+                        +10s ▶
+                      </button>
+                    </>
+                  ) : null}
                 </>
               ) : null}
               <button type="button" className="bar-btn" onClick={props.onStop}>

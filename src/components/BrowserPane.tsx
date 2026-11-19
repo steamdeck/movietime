@@ -19,6 +19,13 @@ export type FrameEvent = {
   season?: number;
   episode?: number;
   visible?: boolean;
+  // PLAYER_EVENT playback snapshot (mirror source only).
+  pstatus?: string;
+  progress?: number;
+  duration?: number;
+  imdb?: string;
+  tmdb?: string;
+  mediaType?: string;
 };
 
 type BrowserPaneProps = {
