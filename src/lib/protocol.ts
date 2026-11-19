@@ -5,9 +5,9 @@ export type NavigationSource = "local" | "remote";
 export type HistoryAction = "back" | "forward" | "reload";
 
 export type SyncMessage =
-  | { type: "navigate"; navigationId: string }
+  | { type: "navigate"; navigationId: string; kind?: "page" | "embed" }
   | { type: "scroll"; x: number; y: number; timestamp: number; control?: boolean }
-  | { type: "history"; action: HistoryAction; navigationId?: string }
+  | { type: "history"; action: HistoryAction; navigationId?: string; kind?: "page" | "embed" }
   | { type: "video:play"; position: number; timestamp: number; control?: boolean }
   | { type: "video:pause"; position: number; timestamp: number; control?: boolean }
   | { type: "video:seek"; position: number; timestamp: number; control?: boolean }
@@ -84,7 +84,12 @@ export function parseSyncMessage(raw: string): SyncMessage | null {
 function validShape(record: Record<string, unknown>): boolean {
   switch (record.type) {
     case "navigate":
-      return typeof record.navigationId === "string" && /^[a-f0-9]{24,64}$/.test(record.navigationId);
+      if (typeof record.navigationId !== "string" || !/^[a-f0-9]{24,64}$/.test(record.navigationId)) {
+        return false;
+      }
+      return (
+        record.kind === undefined || record.kind === "page" || record.kind === "embed"
+      );
     case "scroll": {
       if (typeof record.x !== "number" || typeof record.y !== "number") return false;
       if (!Number.isFinite(record.x) || !Number.isFinite(record.y)) return false;

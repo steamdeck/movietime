@@ -26,6 +26,9 @@ type BrowserPaneProps = {
   canBack?: boolean;
   canForward?: boolean;
   navigationId: string | null;
+  /** Embed navigations render UNSANDBOXED: hardened video players refuse
+   *  sandboxed frames. Isolation comes from the cross-origin boundary. */
+  embed?: boolean;
   reloadToken: number;
   onFrameEvent?: (event: FrameEvent) => void;
   postToFrameRef?: React.MutableRefObject<((data: object) => void) | null>;
@@ -47,6 +50,7 @@ export function BrowserPane({
   canBack,
   canForward,
   navigationId,
+  embed,
   reloadToken,
   onFrameEvent,
   postToFrameRef,
@@ -171,16 +175,28 @@ export function BrowserPane({
 
       <div className="relative min-h-0 flex-1 bg-black">
         {navigationId ? (
-          <iframe
-            ref={iframeRef}
-            key={`${navigationId}:${reloadToken}`}
-            title={local ? "Your page" : "Other person's page"}
-            src={`/api/view/${navigationId}`}
-            className="absolute inset-0 h-full w-full bg-white"
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-forms allow-popups"
-            allow="fullscreen"
-          />
+          embed ? (
+            <iframe
+              ref={iframeRef}
+              key={`${navigationId}:${reloadToken}`}
+              title={local ? "Your page" : "Other person's page"}
+              src={`/api/view/${navigationId}`}
+              className="absolute inset-0 h-full w-full bg-black"
+              referrerPolicy="no-referrer"
+              allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+            />
+          ) : (
+            <iframe
+              ref={iframeRef}
+              key={`${navigationId}:${reloadToken}`}
+              title={local ? "Your page" : "Other person's page"}
+              src={`/api/view/${navigationId}`}
+              className="absolute inset-0 h-full w-full bg-white"
+              referrerPolicy="no-referrer"
+              sandbox="allow-scripts allow-forms allow-popups"
+              allow="fullscreen"
+            />
+          )
         ) : (
           <div className="absolute inset-0 grid place-items-center px-6 text-center sm:px-8">
             <p className="max-w-sm text-sm text-[var(--muted)] sm:text-base">

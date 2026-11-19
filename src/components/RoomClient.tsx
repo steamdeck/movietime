@@ -8,7 +8,7 @@ import { usePeerSession } from "@/hooks/usePeerSession";
 import { useRoomJoin } from "@/hooks/useRoomJoin";
 import type { SyncMessage } from "@/lib/protocol";
 
-type HistoryEntry = { navigationId: string; url?: string };
+type HistoryEntry = { navigationId: string; url?: string; kind: "page" | "embed" };
 
 export function RoomClient({ roomId }: { roomId: string }) {
   const session = useRoomJoin(roomId);
@@ -36,11 +36,15 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const postRemote = useRef<((data: object) => void) | null>(null);
 
   const localNavId = localIndex >= 0 ? localHistory[localIndex]?.navigationId ?? null : null;
+  const localNavKind: "page" | "embed" =
+    localIndex >= 0 ? localHistory[localIndex]?.kind ?? "page" : "page";
+  const [remoteNavKind, setRemoteNavKind] = useState<"page" | "embed">("page");
 
   const onSyncMessage = useCallback((message: SyncMessage) => {
     if (message.type === "navigate") {
       applyingRemote.current = true;
       setRemoteNavId(message.navigationId);
+      setRemoteNavKind("kind" in message && message.kind === "embed" ? "embed" : "page");
       setTimeout(() => {
         applyingRemote.current = false;
       }, 250);
@@ -49,7 +53,10 @@ export function RoomClient({ roomId }: { roomId: string }) {
     if (message.type === "history") {
       applyingRemote.current = true;
       if (message.action === "reload") setRemoteReload((n) => n + 1);
-      if (message.navigationId) setRemoteNavId(message.navigationId);
+      if (message.navigationId) {
+        setRemoteNavId(message.navigationId);
+        setRemoteNavKind("kind" in message && message.kind === "embed" ? "embed" : "page");
+      }
       setTimeout(() => {
         applyingRemote.current = false;
       }, 250);
@@ -156,10 +163,20 @@ export function RoomClient({ roomId }: { roomId: string }) {
         );
         return;
       }
-      const entry: HistoryEntry = { navigationId: data.navigationId, url: withProtocol };
+      const entry: HistoryEntry = {
+        navigationId: data.navigationId,
+        url: withProtocol,
+        kind: data.mode === "embed" ? "embed" : "page",
+      };
       setLocalHistory((history) => [...history.slice(0, localIndex + 1), entry]);
       setLocalIndex((index) => index + 1);
-      if (!peer.sendSync({ type: "navigate", navigationId: data.navigationId })) {
+      if (
+        !peer.sendSync({
+          type: "navigate",
+          navigationId: data.navigationId,
+          kind: entry.kind,
+        })
+      ) {
         notifySyncDropped();
       }
     } catch {
@@ -180,6 +197,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
         type: "history",
         action: direction < 0 ? "back" : "forward",
         navigationId: entry.navigationId,
+        kind: entry.kind,
       })
     ) {
       notifySyncDropped();
@@ -189,16 +207,30 @@ export function RoomClient({ roomId }: { roomId: string }) {
   function reload() {
     if (!localNavId) return;
     setLocalReload((n) => n + 1);
-    if (!peer.sendSync({ type: "history", action: "reload", navigationId: localNavId })) {
+    if (
+      !peer.sendSync({
+        type: "history",
+        action: "reload",
+        navigationId: localNavId,
+        kind: localNavKind,
+      })
+    ) {
       notifySyncDropped();
     }
   }
 
   function onLocalFrame(event: FrameEvent) {
     if (event.type === "navigate" && event.navigationId && !applyingLocal.current) {
-      setLocalHistory((history) => [...history.slice(0, localIndex + 1), { navigationId: event.navigationId! }]);
+      setLocalHistory((history) => [
+        ...history.slice(0, localIndex + 1),
+        { navigationId: event.navigationId!, kind: "page" as const },
+      ]);
       setLocalIndex((index) => index + 1);
-      peer.sendSync({ type: "navigate", navigationId: event.navigationId });
+      peer.sendSync({
+        type: "navigate",
+        navigationId: event.navigationId,
+        kind: "page",
+      });
       return;
     }
     if (event.type === "scroll" && !applyingLocal.current) {
@@ -360,6 +392,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
             canBack={localIndex > 0}
             canForward={localIndex >= 0 && localIndex < localHistory.length - 1}
             navigationId={localNavId}
+            embed={localNavKind === "embed"}
             reloadToken={localReload}
             onFrameEvent={onLocalFrame}
             postToFrameRef={postLocal}
@@ -376,6 +409,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
             caption="Their address is never shown here."
             local={false}
             navigationId={remoteNavId}
+            embed={remoteNavKind === "embed"}
             reloadToken={remoteReload}
             onFrameEvent={onRemoteFrame}
             postToFrameRef={postRemote}
