@@ -78,9 +78,40 @@ export async function GET(
         }
       );
     }
+    if (fetched.status === 401 || fetched.status === 403 || fetched.status === 429) {
+      // Upstream refused the *server* fetch (bot protection / login wall /
+      // geo block). What you saw as a bare "403 Forbidden nginx/..." is the
+      // target site's answer to our datacenter IP — not Movietime refusing
+      // you. Render our explainer instead of the upstream block page so the
+      // two are never confused.
+      return new Response(
+        errorPage(
+          `The site refused the shared viewer's request (HTTP ${fetched.status}). ` +
+            "This usually means it blocks datacenter/bot fetching. " +
+            "Your peer sees this explanation too — nothing private leaked. " +
+            "Use explicit screen sharing for this site."
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+        }
+      );
+    }
+    if (fetched.status !== 200) {
+      return new Response(
+        errorPage(
+          `The site responded with HTTP ${fetched.status}, so there is no page to share. ` +
+            "If it needs login or blocks bots, use explicit screen sharing instead."
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+        }
+      );
+    }
     const html = rewriteHtml(fetched.body.toString("utf8"), fetched.finalUrl, navigation.id);
     return new Response(html, {
-      status: fetched.status === 200 ? 200 : fetched.status,
+      status: 200,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
