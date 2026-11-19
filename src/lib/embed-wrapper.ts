@@ -1,21 +1,23 @@
 /**
  * Client-direct embed wrapper. Renders a same-origin Movietime shell page
- * containing one sandboxed iframe pointed at the sealed embed target.
+ * containing one sandboxed iframe pointed at the per-viewer redirect.
  *
  * Why this exists: server fetching fails for bot-walled hosts (vidsrc-style
  * embeds return HTTP 403 to datacenter IPs). In that case the peer never gets
  * pixels through the proxy — but both browsers can usually load the embed
  * directly, exactly like a nested <iframe> inside a proxied page. This wrapper
  * makes "open embed URL" a first-class path: server stores the URL against an
- * opaque id, both viewers load the target client-side, the raw URL never goes
- * over the DataChannel.
+ * opaque id, each browser's viewer redirects to the target itself, the raw URL
+ * never goes over the DataChannel or into any URL bar.
  *
- * Auth model: the navigationId is bearer (same as /api/view). The sealed
- * asset token inside is what actually authorizes the target URL — it is
- * AES-GCM encrypted with NAV_ENCRYPTION_KEY and expires after 12h.
+ * Auth model: the navigationId is bearer (same as /api/view). The redirect
+ * target is only known to the server; the wrapper page itself carries no URL.
+ * Explicit tradeoff: the peer's browser must resolve the target to load it,
+ * so the address is visible in devtools/network on their machine (not in the
+ * UI). Only use Embed mode when both participants accept that.
  */
-export function renderEmbedWrapper(embedSrc: string, navigationId: string): string {
-  const safe = JSON.stringify(embedSrc);
+export function renderEmbedWrapper(goHref: string, navigationId: string): string {
+  const safe = JSON.stringify(goHref);
   const nav = JSON.stringify(navigationId);
   return `<!doctype html>
 <html>
@@ -50,7 +52,7 @@ export function renderEmbedWrapper(embedSrc: string, navigationId: string): stri
     <div id="bar">
       <button id="fs" type="button">Fullscreen</button>
       <button id="rw" type="button">Reload embed</button>
-      <span id="hint">Protected embed — loads directly in your browser. Playback is not synced; use screen share for exact sync.</span>
+      <span id="hint">Protected embed — loading directly in your browser. Playback is not synced; use screen share for exact sync.</span>
     </div>
     <script>
     (function(){
@@ -58,10 +60,10 @@ export function renderEmbedWrapper(embedSrc: string, navigationId: string): stri
       var SRC = ${safe};
       var stage = document.getElementById("stage");
       var frame = document.createElement("iframe");
-      // Sandboxed + opaque origin: the embed cannot reach our storage, and
-      // we deliberately cannot reach into it (cross-origin) — same deal as
-      // any nested third-party iframe. Playback stays independent per peer.
-      frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-presentation");
+      // Sandboxed: the embed cannot reach our storage, and we deliberately
+      // cannot reach into it (cross-origin) — same deal as any nested
+      // third-party iframe. Playback stays independent per peer.
+      frame.setAttribute("sandbox", "allow-scripts allow-forms allow-popups allow-presentation allow-same-origin");
       frame.setAttribute("referrerpolicy", "no-referrer");
       frame.setAttribute("allow", "fullscreen; autoplay; encrypted-media; picture-in-picture");
       frame.setAttribute("allowfullscreen", "");
