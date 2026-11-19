@@ -261,7 +261,6 @@ export function usePeerSession(options: {
         try {
           await sender.setParameters({
             ...sender.getParameters(),
-            // @ts-expect-error degradationPreference is widely supported but missing from older lib.dom
             degradationPreference: "maintain-framerate",
           });
         } catch {
