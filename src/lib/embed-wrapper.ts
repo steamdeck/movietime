@@ -51,14 +51,26 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
         border-radius: 6px; padding: 8px 12px; min-height: 36px; font-size: 13px;
       }
       #hint { color: #cbbba8; flex: 1; }
+      /* Vendor status strip: title + episode the landing page reports.
+       * Display only — we never touch playback. */
+      #titlebar {
+        position: fixed; top: 0; left: 0; right: 0;
+        padding: 8px 14px calc(8px);
+        background: rgba(0,0,0,0.65); color: #f3e9d4;
+        font: 600 14px/1.3 system-ui, sans-serif;
+        z-index: 10; pointer-events: none;
+      }
+      #titlebar[hidden] { display: none; }
+      #sestate { color: #cbbba8; font-weight: 400; margin-left: 8px; }
     </style>
   </head>
   <body>
     <div id="stage"></div>
+    <div id="titlebar" hidden><span id="vstitle"></span><span id="sestate"></span></div>
     <div id="bar">
       <button id="fs" type="button">Fullscreen</button>
       <button id="rw" type="button">Reload embed</button>
-      <span id="hint">Protected embed — loading directly in your browser. Playback is not synced; use screen share for exact sync.</span>
+      <span id="hint">Co-watch: the clock below keeps both sides together. Press play on the countdown.</span>
     </div>
     <script>
     (function(){
@@ -75,6 +87,53 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
       frame.src = SRC;
       stage.appendChild(frame);
       document.getElementById("rw").onclick = function(){ frame.src = SRC; };
+      // --- Vendor relay (vidsrc landing, same frame): the landing relays
+      // whitelisted player events upward WITHOUT the movietime namespace, so
+      // our onMessage filter (ns === "movietime") would drop them. This
+      // listener handles raw vendor events directly from our own iframe,
+      // re-wraps the whitelisted ones into movietime events for the shell,
+      // and ALSO forwards TV_SET-style control messages from the shell down.
+      // Never forwards arbitrary payloads: allowlist only, both directions.
+      var titlebar = document.getElementById("titlebar");
+      var vstitle = document.getElementById("vstitle");
+      var sestate = document.getElementById("sestate");
+      var VENDOR_TYPES = {
+        PLAYER_TITLE: 1, TV_INFO: 1, TV_STATE: 1,
+        PLAYER_UI: 1, MEDIA_NOT_FOUND: 1, VS_EXPIRED: 1, VS_DEVTOOLS: 1
+      };
+      function relayUp(d){
+        if (!d || typeof d.type !== "string" || !VENDOR_TYPES[d.type]) return;
+        try {
+          var msg = { ns: "movietime", navigationId: NAV_ID, type: "embed:event", vendor: "vidsrc", etype: d.type };
+          if (typeof d.title === "string") msg.title = d.title.slice(0, 200);
+          if (typeof d.season !== "undefined") msg.season = +d.season || 0;
+          if (typeof d.episode !== "undefined") msg.episode = +d.episode || 0;
+          if (typeof d.visible !== "undefined") msg.visible = !!d.visible;
+          parent.postMessage(msg, "*");
+        } catch (e) {}
+        // Local display strip (display only — never playback).
+        try {
+          if (d.type === "PLAYER_TITLE" && d.title) {
+            vstitle.textContent = String(d.title).slice(0, 200);
+            titlebar.hidden = false;
+          } else if (d.type === "MEDIA_NOT_FOUND") {
+            vstitle.textContent = "Media not found";
+            titlebar.hidden = false;
+          } else if (d.type === "TV_INFO" || d.type === "TV_STATE") {
+            var bits = [];
+            if (d.season) bits.push("S" + d.season);
+            if (d.episode) bits.push("E" + d.episode);
+            if (bits.length) {
+              sestate.textContent = bits.join(" ");
+              titlebar.hidden = false;
+            }
+          }
+        } catch (e) {}
+      }
+      window.addEventListener("message", function(ev){
+        if (ev.source !== frame.contentWindow) return;
+        relayUp(ev.data);
+      });
       document.getElementById("fs").onclick = function(){
         try {
           if (frame.requestFullscreen) frame.requestFullscreen();

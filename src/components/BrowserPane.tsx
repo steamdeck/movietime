@@ -12,6 +12,13 @@ export type FrameEvent = {
   rate?: number;
   scroll?: boolean;
   video?: boolean;
+  // Vendor embed events (vidsrc landing relay): display-only, allowlisted.
+  vendor?: string;
+  etype?: string;
+  title?: string;
+  season?: number;
+  episode?: number;
+  visible?: boolean;
 };
 
 type BrowserPaneProps = {

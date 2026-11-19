@@ -43,6 +43,8 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [remoteNavKind, setRemoteNavKind] = useState<"page" | "embed">("page");
   const [localSync, setLocalSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
   const [remoteSync, setRemoteSync] = useState<{ scroll: boolean; video: boolean } | null>(null);
+  const [playerTitle, setPlayerTitle] = useState<string | null>(null);
+  const [playerEp, setPlayerEp] = useState<{ season?: number; episode?: number } | null>(null);
   const coWatch = useCoWatch({
     sendSync: (message) => peerRef.current?.sendSync(message as SyncMessage) ?? false,
     onNotice: setNotice,
@@ -53,6 +55,31 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const onSyncMessage = useCallback((message: SyncMessage) => {
     if (message.type === "sync:state") {
       setRemoteSync({ scroll: message.scroll, video: message.video });
+      return;
+    }
+    if (message.type === "embed:event") {
+      // Vendor display state from the peer's player landing (title/episode).
+      // Display only — the local wrapper already shows its own copy.
+      if (message.vendor !== "vidsrc") return;
+      if (
+        message.navigationId &&
+        remoteNavId &&
+        message.navigationId !== remoteNavId
+      ) {
+        return;
+      }
+      if (
+        (message.etype === "PLAYER_TITLE" || message.etype === "MEDIA_NOT_FOUND") &&
+        typeof message.title === "string"
+      ) {
+        setPlayerTitle(message.title.slice(0, 200));
+      }
+      if (
+        (message.etype === "TV_INFO" || message.etype === "TV_STATE") &&
+        (typeof message.season === "number" || typeof message.episode === "number")
+      ) {
+        setPlayerEp({ season: message.season, episode: message.episode });
+      }
       return;
     }
     if (
@@ -261,6 +288,39 @@ export function RoomClient({ roomId }: { roomId: string }) {
       });
       return;
     }
+    if (event.type === "embed:event" && !applyingLocal.current) {
+      // Our own player's display state: show it AND forward to the peer so
+      // their CoWatchBar reads the same title/episode. Allowlisted only —
+      // parseSyncMessage enforces the vendor/etype shape on receipt.
+      if (event.vendor !== "vidsrc") return;
+      if (typeof event.title === "string") setPlayerTitle(event.title.slice(0, 200));
+      if (
+        event.etype === "TV_INFO" ||
+        event.etype === "TV_STATE" ||
+        typeof event.season === "number" ||
+        typeof event.episode === "number"
+      ) {
+        setPlayerEp({ season: event.season, episode: event.episode });
+      }
+      peer.sendSync({
+        type: "embed:event",
+        vendor: "vidsrc",
+        etype: (event.etype || "PLAYER_TITLE") as
+          | "PLAYER_TITLE"
+          | "TV_INFO"
+          | "TV_STATE"
+          | "PLAYER_UI"
+          | "MEDIA_NOT_FOUND"
+          | "VS_EXPIRED"
+          | "VS_DEVTOOLS",
+        navigationId: localNavId ?? undefined,
+        ...(typeof event.title === "string" ? { title: event.title.slice(0, 200) } : {}),
+        ...(typeof event.season === "number" ? { season: event.season } : {}),
+        ...(typeof event.episode === "number" ? { episode: event.episode } : {}),
+        ...(typeof event.visible === "boolean" ? { visible: event.visible } : {}),
+      });
+      return;
+    }
     if (event.type === "navigate" && event.navigationId && !applyingLocal.current) {
       setLocalHistory((history) => [
         ...history.slice(0, localIndex + 1),
@@ -387,6 +447,8 @@ export function RoomClient({ roomId }: { roomId: string }) {
         countdown={coWatch.countdown}
         embedActive={localNavKind === "embed" || remoteNavKind === "embed"}
         synced={synced}
+        playerTitle={playerTitle}
+        playerEp={playerEp}
         onStart={coWatch.startHosting}
         onStop={coWatch.stop}
         onPlay={coWatch.hostPlay}

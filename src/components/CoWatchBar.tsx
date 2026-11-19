@@ -9,6 +9,8 @@ export function CoWatchBar(props: {
   countdown: number | null;
   embedActive: boolean;
   synced: boolean;
+  playerTitle?: string | null;
+  playerEp?: { season?: number; episode?: number } | null;
   onStart: () => void;
   onStop: () => void;
   onPlay: (position: number) => void;
@@ -45,6 +47,16 @@ export function CoWatchBar(props: {
             {props.role === "host" ? "You host" : "They host"} ·{" "}
             {props.state.status === "playing" ? "playing" : "paused"} @{" "}
             {formatPosition(position)}
+            {props.playerTitle ? (
+              <span className="ml-2 text-[var(--fg)]">· {props.playerTitle}</span>
+            ) : null}
+            {props.playerEp &&
+            (typeof props.playerEp.season === "number" ||
+              typeof props.playerEp.episode === "number") ? (
+              <span className="ml-1">
+                S{props.playerEp.season ?? "?"} E{props.playerEp.episode ?? "?"}
+              </span>
+            ) : null}
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">

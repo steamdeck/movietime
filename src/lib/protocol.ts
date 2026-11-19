@@ -23,6 +23,23 @@ export type SyncMessage =
   | { type: "cowatch:pause"; at: number; t: number }
   | { type: "cowatch:seek"; at: number; t: number }
   | { type: "cowatch:stop" }
+  | {
+      type: "embed:event";
+      vendor: "vidsrc";
+      etype:
+        | "PLAYER_TITLE"
+        | "TV_INFO"
+        | "TV_STATE"
+        | "PLAYER_UI"
+        | "MEDIA_NOT_FOUND"
+        | "VS_EXPIRED"
+        | "VS_DEVTOOLS";
+      navigationId?: string;
+      title?: string;
+      season?: number;
+      episode?: number;
+      visible?: boolean;
+    }
   | { type: "ping"; t: number }
   | { type: "pong"; t: number };
 
@@ -66,6 +83,7 @@ const SYNC_TYPES = new Set<SyncMessage["type"]>([
   "cowatch:pause",
   "cowatch:seek",
   "cowatch:stop",
+  "embed:event",
   "ping",
   "pong",
 ]);
@@ -154,6 +172,49 @@ function validShape(record: Record<string, unknown>): boolean {
       );
     case "cowatch:stop":
       return true;
+    case "embed:event": {
+      // Vendor player events relayed up from the embed wrapper. These are
+      // informational only (title/episode/display/UI visibility) — never
+      // playback control, which the cross-origin boundary forbids. Strictly
+      // allowlisted so a hostile player frame cannot smuggle arbitrary data.
+      if (record.vendor !== "vidsrc") return false;
+      const etype = record.etype;
+      if (
+        etype !== "PLAYER_TITLE" &&
+        etype !== "TV_INFO" &&
+        etype !== "TV_STATE" &&
+        etype !== "PLAYER_UI" &&
+        etype !== "MEDIA_NOT_FOUND" &&
+        etype !== "VS_EXPIRED" &&
+        etype !== "VS_DEVTOOLS"
+      ) {
+        return false;
+      }
+      if (
+        record.navigationId !== undefined &&
+        (typeof record.navigationId !== "string" ||
+          !/^[a-f0-9]{24,64}$/.test(record.navigationId))
+      ) {
+        return false;
+      }
+      if (record.title !== undefined && typeof record.title !== "string") return false;
+      if (
+        record.season !== undefined &&
+        (typeof record.season !== "number" || !Number.isFinite(record.season))
+      ) {
+        return false;
+      }
+      if (
+        record.episode !== undefined &&
+        (typeof record.episode !== "number" || !Number.isFinite(record.episode))
+      ) {
+        return false;
+      }
+      if (record.visible !== undefined && typeof record.visible !== "boolean") {
+        return false;
+      }
+      return true;
+    }
     case "control:request":
     case "control:grant":
     case "control:revoke":
