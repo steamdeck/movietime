@@ -236,14 +236,38 @@ export function usePeerSession(options: {
   const startScreenShare = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return;
+    // Cap capture at 1080p30: full-res getDisplayMedia on 1440p/4K screens
+    // floods the encoder and shows up as stutter on the other side. The
+    // bitrate caps below keep the video sender from bursting.
     const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
+      video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { max: 30 } },
       audio: true,
     });
     localShareRef.current?.getTracks().forEach((track) => track.stop());
     localShareRef.current = stream;
     for (const track of stream.getTracks()) {
-      pc.addTrack(track, stream);
+      const sender = pc.addTrack(track, stream);
+      if (track.kind === "video") {
+        try {
+          await sender.setParameters({
+            ...sender.getParameters(),
+            encodings: [{ maxBitrate: 2_500_000, maxFramerate: 30 }],
+          });
+        } catch {
+          /* encoder caps are best-effort */
+        }
+        // When the network sags, drop frames (smoothness) instead of
+        // buffering up latency (stutter-then-jump).
+        try {
+          await sender.setParameters({
+            ...sender.getParameters(),
+            // @ts-expect-error degradationPreference is widely supported but missing from older lib.dom
+            degradationPreference: "maintain-framerate",
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
       track.onended = () => {
         setSharing(false);
         sendSync({ type: "screenshare:stop" });
