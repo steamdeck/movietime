@@ -119,7 +119,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
     setLocalHistory((history) => {
       if (!history.length) return history;
       for (const entry of history) {
-        peer.sendSync({ type: "navigate", navigationId: entry.navigationId });
+        peer.sendSync({
+          type: "navigate",
+          navigationId: entry.navigationId,
+          kind: entry.kind ?? "page",
+        });
       }
       return history;
     });
