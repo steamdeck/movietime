@@ -103,6 +103,7 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
         PLAYER_EVENT: 1
       };
       var lastProgress = -1;
+      var lastStatus = "";
       function relayUp(d){
         if (!d || typeof d.type !== "string" || !VENDOR_TYPES[d.type]) return;
         try {
@@ -113,10 +114,19 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
           if (typeof d.visible !== "undefined") msg.visible = !!d.visible;
           if (d.type === "PLAYER_EVENT" && d.data) {
             var pd = d.data;
-            if (typeof pd.player_status === "string") msg.pstatus = pd.player_status.slice(0, 16);
+            if (typeof pd.player_status === "string") {
+              msg.pstatus = pd.player_status.slice(0, 16);
+              // Any event from the player proves it is loaded and listening.
+              // Mark ready and flush a queued seek/pause/play.
+              playerReady = true;
+              if (msg.pstatus !== lastStatus) lastStatus = msg.pstatus;
+            }
             if (typeof pd.player_progress === "number" && isFinite(pd.player_progress)) {
               // Throttle progress chatter: forward playing updates only when
-              // the second hand moves; always forward state changes.
+              // the second hand moves; always forward state changes. A fresh
+              // event also proves delivery of any command sent since the last
+              // event — clear the retry slot.
+              pendingCmd = null;
               var sec = Math.floor(pd.player_progress);
               if (pd.player_status !== "playing" || sec !== lastProgress) {
                 lastProgress = sec;
@@ -136,6 +146,8 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
               if (typeof pi.season !== "undefined") msg.season = +pi.season || 0;
               if (typeof pi.episode !== "undefined") msg.episode = +pi.episode || 0;
             }
+            // Any event arrived: mark ready and send anything waiting.
+            flushPending();
           }
           parent.postMessage(msg, "*");
         } catch (e) {}
@@ -162,16 +174,64 @@ export function renderEmbedWrapper(goHref: string, navigationId: string): string
       // only sender: { ns movietime, type "embed:cmd", action, value? } from
       // our direct parent becomes { player: true, action, value? } into the
       // vendor frame. Anything else is ignored.
+      //
+      // Queueing: the vendor doc notes commands are ignored until the player
+      // has loaded (viewer pressed play once). A seek arriving while the
+      // player isn't ready would silently die — so the wrapper queues the
+      // latest command and replays it on the next PLAYER_EVENT. At most one
+      // pending command; a newer one replaces the older.
+      var pendingCmd = null;
+      var playerReady = false;
+      function sendToPlayer(action, value){
+        try {
+          var out = { player: true, action: String(action || "").slice(0, 32) };
+          if (typeof value === "number" && isFinite(value)) out.value = value;
+          frame.contentWindow.postMessage(out, "*");
+          return true;
+        } catch (e) { return false; }
+      }
+      function flushPending(){
+        // Send-once + clear-on-next-event: the vendor only ignores commands
+        // while the player isn't loaded. Any PLAYER_EVENT proves it is loaded
+        // and alive, so a command sent before that event can be considered
+        // delivered — clear the slot. If no event arrives within ~3s the
+        // player may be stalled (ad/rebuffer): resend, max 3 tries, then drop
+        // and let the user tap again (the state readout shows the divergence).
+        if (!pendingCmd || !playerReady) return;
+        var c = pendingCmd;
+        if (c.sends >= 3) { pendingCmd = null; return; }
+        c.sends++;
+        c.sentAt = Date.now();
+        sendToPlayer(c.action, c.value);
+        setTimeout(function(){
+          if (pendingCmd === c && Date.now() - c.sentAt >= 2900) flushPending();
+        }, 3000);
+      }
       window.addEventListener("message", function(ev){
         if (ev.source !== window.parent) return;
         var m = ev.data;
         if (!m || m.ns !== "movietime" || m.type !== "embed:cmd") return;
         if (m.navigationId && m.navigationId !== NAV_ID) return;
-        try {
-          var out = { player: true, action: String(m.action || "").slice(0, 32) };
-          if (typeof m.value === "number" && isFinite(m.value)) out.value = m.value;
-          frame.contentWindow.postMessage(out, "*");
-        } catch (e) {}
+        var action = String(m.action || "").slice(0, 32);
+        var value = (typeof m.value === "number" && isFinite(m.value)) ? m.value : undefined;
+        if (playerReady) {
+          sendToPlayer(action, value);
+          // Track it as pending too: if the player swallows it (ad/rebuffer),
+          // the next PLAYER_EVENT re-sends, max 3 tries. A newer command
+          // replaces the older — the latest intent wins.
+          pendingCmd = { action: action, value: value, sends: 1, sentAt: Date.now() };
+          setTimeout((function(c){
+            return function(){
+              if (pendingCmd === c && Date.now() - c.sentAt >= 2900) flushPending();
+            };
+          })(pendingCmd), 3000);
+        } else {
+          // Not ready yet: remember it, report it, replay on ready.
+          pendingCmd = { action: action, value: value, sends: 0, sentAt: 0 };
+          try {
+            parent.postMessage({ ns: "movietime", navigationId: NAV_ID, type: "embed:event", vendor: "vidsrc", etype: "PLAYER_EVENT", pstatus: "seeked", progress: -1 }, "*");
+          } catch (e) {}
+        }
       });
       window.addEventListener("message", function(ev){
         if (ev.source !== frame.contentWindow) return;

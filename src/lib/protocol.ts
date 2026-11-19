@@ -280,7 +280,7 @@ function validShape(record: Record<string, unknown>): boolean {
         record.action === "unmute" ||
         record.action === "rate+" ||
         record.action === "rate-" ||
-        /^seek-?\d+(\.\d+)?$/.test(record.action) ||
+        /^seek[+-]?\d+(\.\d+)?$/.test(record.action) ||
         /^rate\d+(\.\d+)?$/.test(record.action);
       if (!ok) return false;
       if (
